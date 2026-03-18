@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-tui:
+    name: Build TUI (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tui/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('tui/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build TUI (release)
+        working-directory: tui
+        run: cargo build --release
+
+      - name: Upload TUI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: efl-tui-windows
+          path: tui/target/release/efl-tui.exe
+
+  build-engine:
+    name: Build Engine DLL (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        working-directory: engine
+        run: cmake -B build
+
+      - name: Build Engine DLL
+        working-directory: engine
+        run: cmake --build build --config Release
+
+      - name: Upload Engine DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: efl-engine-windows
+          path: engine/build/bin/Release/EFL.dll
+          if-no-files-found: warn
+
+  release:
+    name: Create Release
+    needs: [build-tui, build-engine]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download TUI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: efl-tui-windows
+          path: artifacts/tui
+
+      - name: Download Engine artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: efl-engine-windows
+          path: artifacts/engine
+
+      - name: Package release assets
+        run: |
+          cd artifacts
+          zip -j ../efl-tui-${{ github.ref_name }}-windows.zip tui/efl-tui.exe 2>/dev/null || true
+          zip -j ../efl-engine-${{ github.ref_name }}-windows.zip engine/EFL.dll 2>/dev/null || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            efl-tui-${{ github.ref_name }}-windows.zip
+            efl-engine-${{ github.ref_name }}-windows.zip
+          body: |
+            ## EFL ${{ github.ref_name }}
+
+            ### Assets
+            - **efl-tui** — Terminal UI loader and monitor
+            - **efl-engine** — Engine DLL (requires Aurie + YYToolkit)
+
+            > Engine DLL build may be incomplete until Aurie/YYTK SDKs are vendored.

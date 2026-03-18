@@ -1,4 +1,5 @@
 mod app;
+mod demo;
 mod diagnostics;
 mod ipc;
 mod phases;
@@ -15,8 +16,24 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 use app::App;
+use ipc::PipeReader;
 
 fn main() -> io::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let pipe_reader = if args.iter().any(|a| a == "--demo") {
+        // Demo mode: feed mock messages through the channel
+        let rx = demo::start_demo();
+        Some(PipeReader::from_channel(rx))
+    } else if let Some(pos) = args.iter().position(|a| a == "--pipe") {
+        // Connect to a named pipe
+        let pipe_name = args.get(pos + 1)
+            .expect("--pipe requires a pipe name argument");
+        Some(PipeReader::connect(pipe_name))
+    } else {
+        None
+    };
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -25,7 +42,7 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let mut app = App::new();
+    let mut app = App::new(pipe_reader);
     let result = run(&mut terminal, &mut app);
 
     // Restore terminal
