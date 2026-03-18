@@ -1,0 +1,24 @@
+# Scratch / resources / dev logs
+.temp/
+CLAUDE.md
+.claude/
+
+# C++ build artifacts
+engine/build/
+engine/out/
+engine/vendor/*/build/
+*.obj
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Rust build artifacts
+tui/target/
+
+# IDE
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/resource.schema.json",
+  "title": "EFL Resource Definition",
+  "description": "Schema for resource type definitions (harvestables, forageables, breakables)",
+  "type": "object",
+  "required": ["id", "kind"],
+  "properties": {
+    "id": { "type": "string" },
+    "kind": { "type": "string", "enum": ["forageable_node", "breakable_node", "harvestable_node", "special_interactable"] },
+    "sprite": { "type": "string" },
+    "yieldTable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "string" },
+          "min": { "type": "integer" },
+          "max": { "type": "integer" }
+        }
+      }
+    },
+    "spawnRules": {
+      "type": "object",
+      "properties": {
+        "areas": { "type": "array", "items": { "type": "string" } },
+        "respawnPolicy": { "type": "string" },
+        "seasonal": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "properties": {
+        "tool": { "type": "string" },
+        "scriptMode": { "type": "string" }
+      }
+    }
+  }
+}

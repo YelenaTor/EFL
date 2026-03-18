@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/area.schema.json",
+  "title": "EFL Area Definition",
+  "description": "Schema for area content definitions",
+  "type": "object",
+  "required": ["id", "displayName", "backend"],
+  "properties": {
+    "id": { "type": "string" },
+    "displayName": { "type": "string" },
+    "backend": { "type": "string", "enum": ["hijacked", "native"] },
+    "hostRoom": { "type": "string" },
+    "locationId": { "type": "string" },
+    "music": { "type": "string" },
+    "tileProfile": { "type": "string" },
+    "spawnTable": { "type": "string" },
+    "entryAnchor": { "type": "string" },
+    "unlockTrigger": { "type": "string" },
+    "saveNamespace": { "type": "string" }
+  }
+}

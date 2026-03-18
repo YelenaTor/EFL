@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/trigger.schema.json",
+  "title": "EFL Trigger Definition",
+  "description": "Schema for reusable boolean trigger conditions",
+  "type": "object",
+  "required": ["id", "type"],
+  "properties": {
+    "id": { "type": "string" },
+    "type": { "type": "string", "enum": ["allOf", "anyOf", "questComplete", "flagSet"] },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/efl-manifest.schema.json",
+  "title": "EFL Manifest",
+  "description": "Schema for .efl capability manifest files",
+  "type": "object",
+  "required": ["schemaVersion", "modId", "name", "version", "eflVersion"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "description": "Manifest schema version"
+    },
+    "modId": {
+      "type": "string",
+      "description": "Unique mod identifier (reverse domain notation)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable mod name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Mod version (semver)"
+    },
+    "eflVersion": {
+      "type": "string",
+      "description": "Minimum required EFL version (semver)"
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "array", "items": { "type": "string" } },
+        "optional": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "features": {
+      "type": "object",
+      "description": "Feature flags declaring which EFL subsystems this mod uses",
+      "properties": {
+        "areas": { "type": "boolean" },
+        "warps": { "type": "boolean" },
+        "resources": { "type": "boolean" },
+        "crafting": { "type": "boolean" },
+        "npcs": { "type": "boolean" },
+        "quests": { "type": "boolean" },
+        "triggers": { "type": "boolean" },
+        "dialogue": { "type": "boolean" },
+        "story": { "type": "boolean" },
+        "ipcPublish": { "type": "boolean" },
+        "ipcConsume": { "type": "boolean" },
+        "migrations": { "type": "boolean" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "strictMode": { "type": "boolean" },
+        "areaBackend": { "type": "string" },
+        "saveScope": { "type": "string" }
+      }
+    }
+  }
+}

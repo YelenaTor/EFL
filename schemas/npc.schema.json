@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/npc.schema.json",
+  "title": "EFL NPC Definition",
+  "description": "Schema for NPC definitions",
+  "type": "object",
+  "required": ["id", "displayName", "kind"],
+  "properties": {
+    "id": { "type": "string" },
+    "displayName": { "type": "string" },
+    "kind": { "type": "string", "enum": ["local", "world"] },
+    "defaultArea": { "type": "string" },
+    "spawnAnchor": { "type": "string" },
+    "portraitPack": { "type": "string" },
+    "dialogueSet": { "type": "string" },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "time": { "type": "string" },
+            "anchor": { "type": "string" }
+          }
+        }
+      }
+    },
+    "unlockTrigger": { "type": "string" },
+    "saveNamespace": { "type": "string" }
+  }
+}

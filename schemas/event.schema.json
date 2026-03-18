@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/event.schema.json",
+  "title": "EFL Event Definition",
+  "description": "Schema for content-defined story events and cutscenes",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "type": "string" },
+    "mode": { "type": "string", "enum": ["nativeBridge", "customOverlay"] },
+    "trigger": { "type": "string" },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" }
+        }
+      }
+    }
+  }
+}

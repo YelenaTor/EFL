@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/quest.schema.json",
+  "title": "EFL Quest Definition",
+  "description": "Schema for quest definitions",
+  "type": "object",
+  "required": ["id", "title", "stages"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "objectives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" }
+              }
+            }
+          },
+          "onComplete": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rewards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" }
+        }
+      }
+    }
+  }
+}

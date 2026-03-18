@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/recipe.schema.json",
+  "title": "EFL Recipe Definition",
+  "description": "Schema for crafting recipe definitions",
+  "type": "object",
+  "required": ["id", "output"],
+  "properties": {
+    "id": { "type": "string" },
+    "output": { "type": "string" },
+    "station": { "type": "string" },
+    "ingredients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "string" },
+          "count": { "type": "integer" }
+        }
+      }
+    },
+    "unlockTrigger": { "type": "string" }
+  }
+}

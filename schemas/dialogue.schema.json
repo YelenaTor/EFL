@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/dialogue.schema.json",
+  "title": "EFL Dialogue Definition",
+  "description": "Schema for dialogue set definitions",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "type": "string" },
+    "npc": { "type": "string" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "portrait": { "type": "string" },
+          "condition": { "type": "string" }
+        }
+      }
+    }
+  }
+}

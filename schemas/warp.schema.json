@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/warp.schema.json",
+  "title": "EFL Warp Definition",
+  "description": "Schema for warp/transition definitions",
+  "type": "object",
+  "required": ["id", "sourceArea", "targetArea"],
+  "properties": {
+    "id": { "type": "string" },
+    "sourceArea": { "type": "string" },
+    "sourceAnchor": { "type": "string" },
+    "targetArea": { "type": "string" },
+    "targetAnchor": { "type": "string" },
+    "transition": { "type": "string" },
+    "requireTrigger": { "type": "string" },
+    "failureText": { "type": "string" }
+  }
+}
