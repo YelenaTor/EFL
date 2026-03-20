@@ -23,11 +23,18 @@ FetchContent_Declare(
     GIT_TAG 2.3.0
 )
 
-FetchContent_MakeAvailable(nlohmann_json json_schema_validator)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.15.2
+)
 
-# Aurie/YYTK (added as submodules later)
-# include_directories(vendor/Aurie/include)
-# include_directories(vendor/YYToolkit/include)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(nlohmann_json json_schema_validator googletest)
+
+# Aurie/YYTK stubs (swap for real SDKs later)
+include_directories(vendor/Aurie/include)
+include_directories(vendor/YYToolkit/include)
 
 # EFL public headers
 include_directories(include)
@@ -49,3 +56,7 @@ target_compile_definitions(EFL PRIVATE
     EFL_VERSION_PATCH=${PROJECT_VERSION_PATCH}
     EFL_BUILDING_DLL
 )
+
+# Tests
+enable_testing()
+add_subdirectory(tests)

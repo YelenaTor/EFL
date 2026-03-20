@@ -3,13 +3,13 @@
 // EFL - Expansion Framework Library
 // Runtime expansion framework for Fields of Mistria
 
-#define EFL_VERSION_STRING "0.1.0"
+#define EFL_VERSION_STRING "0.2.0"
 
 #ifndef EFL_VERSION_MAJOR
 #define EFL_VERSION_MAJOR 0
 #endif
 #ifndef EFL_VERSION_MINOR
-#define EFL_VERSION_MINOR 1
+#define EFL_VERSION_MINOR 2
 #endif
 #ifndef EFL_VERSION_PATCH
 #define EFL_VERSION_PATCH 0
