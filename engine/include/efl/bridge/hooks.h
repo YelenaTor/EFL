@@ -12,6 +12,7 @@ namespace efl::bridge {
 class HookRegistry {
 public:
     explicit HookRegistry(YYTK::YYTKInterface* yytk);
+    ~HookRegistry();
 
     bool registerHook(const std::string& name, const std::string& target,
                       YYTK::CodeCallback callback);

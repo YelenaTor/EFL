@@ -5,6 +5,10 @@ namespace efl::bridge {
 HookRegistry::HookRegistry(YYTK::YYTKInterface* yytk)
     : yytk_(yytk) {}
 
+HookRegistry::~HookRegistry() {
+    removeAll();
+}
+
 bool HookRegistry::registerHook(const std::string& name, const std::string& target,
                                  YYTK::CodeCallback callback) {
     if (!yytk_) return false;
