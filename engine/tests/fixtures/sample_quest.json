@@ -1,0 +1,25 @@
+{
+    "id": "find_crystals",
+    "title": "The Crystal Hunt",
+    "stages": [
+        {
+            "id": "gather",
+            "objectives": [
+                {"type": "collect", "item": "crystal_shard", "count": 5}
+            ],
+            "onComplete": [
+                {"type": "setFlag", "flag": "has_crystals"}
+            ]
+        },
+        {
+            "id": "return",
+            "objectives": [
+                {"type": "talkTo", "npc": "minerva"}
+            ],
+            "onComplete": []
+        }
+    ],
+    "rewards": [
+        {"type": "item", "item": "crystal_pickaxe", "count": 1}
+    ]
+}
