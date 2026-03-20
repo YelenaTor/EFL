@@ -1,0 +1,16 @@
+{
+    "schemaVersion": 1,
+    "modId": "com.test.example",
+    "name": "Test Mod",
+    "version": "1.0.0",
+    "eflVersion": "0.2.0",
+    "features": {
+        "areas": true,
+        "warps": true,
+        "quests": true
+    },
+    "settings": {
+        "strictMode": true,
+        "areaBackend": "hijacked"
+    }
+}
