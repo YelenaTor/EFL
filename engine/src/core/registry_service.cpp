@@ -2,4 +2,6 @@
 
 namespace efl {
 
+// Shell — registries will be added in later tasks
+
 } // namespace efl
