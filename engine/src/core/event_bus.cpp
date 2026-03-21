@@ -1,8 +1,13 @@
 #include "efl/core/event_bus.h"
+#include "efl/ipc/pipe_writer.h"
 
 #include <algorithm>
 
 namespace efl {
+
+void EventBus::setPipeWriter(PipeWriter* pipe) {
+    pipe_ = pipe;
+}
 
 SubscriptionId EventBus::subscribe(const std::string& eventName, EventCallback callback) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -36,6 +41,13 @@ void EventBus::publish(const std::string& eventName, const nlohmann::json& data)
     // tries to subscribe/publish.
     for (auto& cb : callbacks) {
         cb(data);
+    }
+
+    if (pipe_) {
+        pipe_->write("event.published", nlohmann::json{
+            {"event", eventName},
+            {"subscriberCount", callbacks.size()}
+        });
     }
 }
 

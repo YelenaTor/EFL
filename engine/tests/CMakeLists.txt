@@ -7,11 +7,10 @@ target_link_libraries(efl_tests PRIVATE
 )
 target_include_directories(efl_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/vendor/Aurie/include
-    ${CMAKE_SOURCE_DIR}/vendor/YYToolkit/include
 )
 target_compile_definitions(efl_tests PRIVATE
     EFL_BUILDING_DLL
+    EFL_STUB_SDK
     EFL_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
     EFL_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     EFL_VERSION_PATCH=${PROJECT_VERSION_PATCH}

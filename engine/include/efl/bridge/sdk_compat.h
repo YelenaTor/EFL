@@ -1,11 +1,39 @@
 #pragma once
+
+// SDK compatibility shim for test builds (EFL_STUB_SDK).
+// Provides the original stub types so that the 83 application-layer tests
+// continue to compile without real Aurie/YYToolkit headers.
+
+#ifndef EFL_STUB_SDK
+#error "sdk_compat.h must only be included when EFL_STUB_SDK is defined"
+#endif
+
 #include <cstdint>
 #include <string>
 #include <functional>
 #include <vector>
 
-// Minimal YYTK stubs for EFL compilation
-// Replace with real YYToolkit SDK when vendoring
+// ── Aurie stubs ──────────────────────────────────────────────────────────────
+
+namespace Aurie {
+
+using AurieStatus = int32_t;
+constexpr AurieStatus AURIE_SUCCESS = 0;
+constexpr AurieStatus AURIE_MODULE_NOT_FOUND = -1;
+
+struct AurieModule {
+    std::string name;
+    std::string version;
+};
+
+using ModuleInitCallback = std::function<AurieStatus()>;
+using ModuleUnloadCallback = std::function<void()>;
+
+#define EXPORTED_AURIE_MODULE(init_fn, unload_fn)
+
+} // namespace Aurie
+
+// ── YYTK stubs ───────────────────────────────────────────────────────────────
 
 namespace YYTK {
 

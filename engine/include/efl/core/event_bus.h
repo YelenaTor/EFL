@@ -15,14 +15,19 @@ namespace efl {
 using EventCallback = std::function<void(const nlohmann::json& data)>;
 using SubscriptionId = uint64_t;
 
+class PipeWriter; // forward
+
 class EventBus {
 public:
+    void setPipeWriter(PipeWriter* pipe);
+
     SubscriptionId subscribe(const std::string& eventName, EventCallback callback);
     void unsubscribe(SubscriptionId id);
     void publish(const std::string& eventName, const nlohmann::json& data);
     void clear();
 
 private:
+    PipeWriter* pipe_ = nullptr;
     struct Subscription {
         SubscriptionId id;
         EventCallback callback;

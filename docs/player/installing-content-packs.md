@@ -44,7 +44,7 @@ Before installing any EFL Pack, you need:
 Check the EFL log file at `<game>/EFL/logs/` after launching. A successful load looks like:
 
 ```
-[BOOT] EFL v1.0.0-pre.1 initializing
+[BOOT] EFL v1.0.0 initializing
 [BOOT] Loaded manifest: com.author.my-mod v1.0.0
 [BOOT] Bootstrap complete — 1 manifest(s) loaded
 ```

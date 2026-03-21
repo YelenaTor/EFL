@@ -5,7 +5,9 @@
 #include <string>
 #include <functional>
 #include <vector>
-#include <yytk/yytk.h>
+
+#ifdef EFL_STUB_SDK
+#include "efl/bridge/sdk_compat.h"
 
 namespace efl::bridge {
 
@@ -15,7 +17,6 @@ public:
 
     using RoomChangeCallback = std::function<void(YYTK::RoomId oldRoom, YYTK::RoomId newRoom)>;
 
-    // Call each frame to check for room changes
     void update();
 
     YYTK::RoomId currentRoom() const;
@@ -29,3 +30,37 @@ private:
 };
 
 } // namespace efl::bridge
+
+#else // Real SDK
+
+#include <Aurie/shared.hpp>
+#include <YYToolkit/YYTK_Shared.hpp>
+
+namespace efl::bridge {
+
+class RoomTracker {
+public:
+    RoomTracker(YYTK::YYTKInterface* yytk);
+
+    using RoomChangeCallback = std::function<void(const std::string& oldRoom, const std::string& newRoom)>;
+
+    // Call from frame callback to detect room changes via YYTK.
+    void update();
+
+    // Notify directly from a room transition hook.
+    void onRoomTransition(const std::string& newRoomName);
+
+    const std::string& currentRoomName() const;
+    void onRoomChange(RoomChangeCallback callback);
+
+private:
+    YYTK::YYTKInterface* yytk_;
+    std::string currentRoom_;
+    std::vector<RoomChangeCallback> callbacks_;
+
+    void fireCallbacks(const std::string& oldRoom, const std::string& newRoom);
+};
+
+} // namespace efl::bridge
+
+#endif // EFL_STUB_SDK

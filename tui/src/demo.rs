@@ -86,7 +86,9 @@ pub fn start_demo() -> mpsc::Receiver<IpcMessage> {
             "par_NPC_init",
         ];
         for name in &hooks {
-            if !send(&tx, msg("hook.registered", serde_json::json!({ "name": name }))) { return; }
+            if !send(&tx, msg("hook.registered", serde_json::json!({
+                "name": name, "target": name, "kind": "script"
+            }))) { return; }
             thread::sleep(Duration::from_millis(200));
         }
 
@@ -124,23 +126,23 @@ pub fn start_demo() -> mpsc::Receiver<IpcMessage> {
             // Fire random hooks
             let hook_idx = cycle % hooks.len();
             if !send(&tx, msg("hook.fired", serde_json::json!({
-                "name": hooks[hook_idx]
+                "name": hooks[hook_idx], "target": hooks[hook_idx]
             }))) { return; }
 
             // Publish events every few ticks
             if cycle % 3 == 0 {
                 let event_idx = cycle % event_names.len();
                 if !send(&tx, msg("event.published", serde_json::json!({
-                    "name": event_names[event_idx]
+                    "name": event_names[event_idx], "subscribers": 2
                 }))) { return; }
             }
 
             // Save operations occasionally
             if cycle % 7 == 0 {
-                let op = if cycle % 14 == 0 { "save" } else { "load" };
+                let op = if cycle % 14 == 0 { "set" } else { "remove" };
                 if !send(&tx, msg("save.operation", serde_json::json!({
                     "operation": op,
-                    "key": format!("EFL/example-mod/area/crystal_cave_{}", cycle)
+                    "path": format!("EFL/example-mod/area/crystal_cave_{}", cycle)
                 }))) { return; }
             }
         }

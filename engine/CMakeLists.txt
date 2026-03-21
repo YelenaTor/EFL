@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(EFL VERSION 1.0.0 LANGUAGES CXX)
-set(EFL_VERSION_PRERELEASE "pre.1")
+set(EFL_VERSION_PRERELEASE "pre.2")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,18 +33,22 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json json_schema_validator googletest)
 
-# Aurie/YYTK stubs (swap for real SDKs later)
-include_directories(vendor/Aurie/include)
-include_directories(vendor/YYToolkit/include)
-
 # EFL public headers
 include_directories(include)
 
 # Collect sources
 file(GLOB_RECURSE EFL_SOURCES src/*.cpp)
 
-# Build as shared library (DLL)
-add_library(EFL SHARED ${EFL_SOURCES})
+# YYTK types implementation (RValue constructors, etc.)
+set(YYTK_TYPES_CPP vendor/YYToolkit/include/YYToolkit/YYTK_Shared_Types.cpp)
+
+# Build as shared library (DLL) — links against real Aurie/YYTK SDKs
+add_library(EFL SHARED ${EFL_SOURCES} ${YYTK_TYPES_CPP})
+
+target_include_directories(EFL PRIVATE
+    vendor/Aurie/include
+    vendor/YYToolkit/include
+)
 
 target_link_libraries(EFL PRIVATE
     nlohmann_json::nlohmann_json
@@ -59,6 +63,6 @@ target_compile_definitions(EFL PRIVATE
     EFL_BUILDING_DLL
 )
 
-# Tests
+# Tests — use stub SDK for application-layer testing
 enable_testing()
 add_subdirectory(tests)

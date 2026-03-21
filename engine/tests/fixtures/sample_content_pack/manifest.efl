@@ -3,7 +3,7 @@
     "modId": "com.test.crystalmod",
     "name": "Crystal Cave Mod",
     "version": "1.0.0",
-    "eflVersion": "1.0.0-pre.1",
+    "eflVersion": "1.0.0-pre.2",
     "features": {
         "areas": true,
         "warps": true,
