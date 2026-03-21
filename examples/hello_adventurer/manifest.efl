@@ -1,0 +1,30 @@
+{
+    "schemaVersion": 1,
+    "modId": "com.efl.example.hello-adventurer",
+    "name": "Hello, Adventurer!",
+    "version": "1.0.0",
+    "eflVersion": "1.0.0-pre.1",
+    "dependencies": {
+        "required": [],
+        "optional": []
+    },
+    "features": {
+        "areas": true,
+        "warps": true,
+        "resources": false,
+        "crafting": false,
+        "npcs": true,
+        "quests": false,
+        "triggers": true,
+        "dialogue": true,
+        "story": false,
+        "ipcPublish": false,
+        "ipcConsume": false,
+        "migrations": false
+    },
+    "settings": {
+        "strictMode": true,
+        "areaBackend": "hijacked",
+        "saveScope": "EFL/com.efl.example.hello-adventurer"
+    }
+}

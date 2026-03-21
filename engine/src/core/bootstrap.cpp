@@ -15,6 +15,10 @@ namespace {
 std::string eflVersionString() {
     std::ostringstream ss;
     ss << EFL_VERSION_MAJOR << "." << EFL_VERSION_MINOR << "." << EFL_VERSION_PATCH;
+    constexpr const char* prerelease = EFL_VERSION_PRERELEASE;
+    if (prerelease[0] != '\0') {
+        ss << "-" << prerelease;
+    }
     return ss.str();
 }
 

@@ -4,10 +4,10 @@
   <br />
   <em>Expansion Framework Library</em>
   <br />
-  <sub>by yoru — runtime expansion framework for fields of mistria</sub>
+  <sub>by Yoru — runtime expansion framework for fields of mistria</sub>
   <br /><br />
-  <a href="#"><img src="https://img.shields.io/badge/EFL-v1.0.0-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-v1.0.0-D5A6BD?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/EFL-v1.0.0--pre.1-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/status-v1.0.0--pre.1%20prerelease-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-windows-A4C2F4?style=flat-square&labelColor=2D2D2D" alt="Platform" /></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B%2020%20%7C%20Rust-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Languages" /></a>
 </p>
@@ -18,6 +18,48 @@
 
 > *a runtime expansion framework that sits above MOMI and provides a stable,*
 > *declarative authoring surface for expansion-scale content mods.*
+
+<br />
+
+## what is efl
+
+EFL is a **runtime expansion framework** for [Fields of Mistria](https://store.steampowered.com/app/2142790/Fields_of_Mistria/). It provides mod authors with a high-level, declarative API for building expansion-scale content — custom areas, NPCs, quests, crafting recipes, dialogue, and more — without touching raw game internals.
+
+```
+┌──────────────────────────────────────────────┐
+│              content packs (.efl)            │
+│         json manifests + asset folders       │
+├──────────────────────────────────────────────┤
+│                     efl                      │
+│     bootstrap · services · registries        │
+├──────────────────────────────────────────────┤
+│            aurie + yytoolkit                 │
+│          native hooks + gml bridge           │
+├──────────────────────────────────────────────┤
+│           fields of mistria (gm)             │
+└──────────────────────────────────────────────┘
+```
+
+<br />
+
+## what you can build
+
+EFL v1 supports fully declarative content packs — no C++ or GML required:
+
+| feature | what it does |
+|:--------|:-------------|
+| **areas** | hijack existing game rooms and repopulate them as new locations with custom music, spawn tables, and entry anchors |
+| **warps** | define transition points between areas, gated by unlock triggers with customizable failure text |
+| **resources** | register forageables, breakables, and harvestables with yield tables, respawn policies, seasonal availability, and tool requirements |
+| **quests** | multi-stage quest chains with typed objectives (collect, talk to), stage completion actions, and item rewards |
+| **npcs** | local NPCs that spawn in EFL areas with dialogue sets, portraits, spawn anchors, and trigger-gated visibility |
+| **dialogue** | conditional dialogue entries filtered by game state — show different lines based on flags and quest progress |
+| **crafting** | recipes at specific stations with ingredient lists, unlocked by completing quests or meeting trigger conditions |
+| **story events** | bridge into the game's native cutscene system — define event sequences triggered by game state |
+| **triggers** | unified boolean condition system (`allOf`, `anyOf`, `flagSet`, `questComplete`) that gates every feature |
+| **cross-mod ipc** | versioned pub/sub channels for mods to communicate typed messages with compatibility warnings |
+
+All content is defined through JSON files validated against schemas at load time. The engine emits structured diagnostic codes for any issues found during validation.
 
 <br />
 
@@ -53,39 +95,18 @@
 
 <br />
 
-## what is efl
-
-EFL is a **runtime expansion framework** for [Fields of Mistria](https://store.steampowered.com/app/2142790/Fields_of_Mistria/). It provides mod authors with a high-level, declarative API for building expansion-scale content — custom areas, NPCs, quests, crafting recipes, dialogue, and more — without touching raw game internals.
-
-```
-┌──────────────────────────────────────────────┐
-│              content packs (.efl)             │
-│         json manifests + asset folders        │
-├──────────────────────────────────────────────┤
-│                     efl                       │
-│     bootstrap · services · registries         │
-├──────────────────────────────────────────────┤
-│            aurie + yytoolkit                  │
-│          native hooks + gml bridge            │
-├──────────────────────────────────────────────┤
-│           fields of mistria (gm)              │
-└──────────────────────────────────────────────┘
-```
-
-<br />
-
 ## architecture
 
 Seven layers, each with a single responsibility:
 
 | | layer | what it does |
 |:-:|:------|:-------------|
-| `A` | **bootstrap** | version checks, `.efl` manifest discovery, capability resolution |
-| `B` | **engine bridge** | YYTK/Aurie hooks, room tracking, GML routine lookup |
+| `A` | **bootstrap** | version checks, `.efl` manifest discovery, capability resolution, crash boundary |
+| `B` | **engine bridge** | YYTK/Aurie hooks, room tracking, GML routine lookup, instance walking |
 | `C` | **core services** | save, events, triggers, config, logging, compatibility |
 | `D` | **feature registries** | areas, warps, resources, crafting, NPCs, quests, dialogue, story |
 | `E` | **content model** | declarative JSON definitions for all content types |
-| `F` | **ipc** | cross-mod communication channels |
+| `F` | **ipc** | cross-mod communication channels (versioned, declared in manifest) |
 | `G` | **tooling** | schema validation, debug console, TUI monitor |
 
 <br />
@@ -96,9 +117,14 @@ Seven layers, each with a single responsibility:
 efl/
 ├── engine/          c++ aurie/yytk dll (cmake, msvc)
 │   ├── include/     public headers — layers a through f
-│   ├── src/         implementation
-│   ├── vendor/      aurie + yytk sdks (submodules)
-│   └── tests/
+│   │   └── efl/
+│   │       ├── core/         bootstrap, services, manifest, diagnostics
+│   │       ├── bridge/       hook registry, room tracker, routine invoker
+│   │       ├── registries/   areas, warps, resources, npcs, quests, crafting
+│   │       └── ipc/          pipe writer, channel broker
+│   ├── src/         implementation (mirrors include/)
+│   ├── vendor/      aurie + yytk sdks
+│   └── tests/       google test suite (83 tests)
 ├── tui/             rust tui loader and monitor (cargo)
 │   └── src/
 │       ├── phases/      boot · diagnostics · monitor
@@ -109,6 +135,29 @@ efl/
 ├── schemas/         json schema files (draft 2020-12)
 └── docs/
 ```
+
+<br />
+
+## content packs
+
+Mods declare their content through `.efl` manifests and organized asset folders:
+
+```
+my-mod/
+├── manifest.efl          mod metadata + capability declarations
+├── areas/                custom area definitions
+├── warps/                warp point definitions
+├── resources/            resource node definitions
+├── quests/               quest chains + objectives
+├── triggers/             unlock conditions (flags, quest completion)
+├── npcs/                 npc definitions
+├── dialogue/             dialogue sets with conditional entries
+├── recipes/              crafting recipes
+├── events/               story/cutscene event definitions
+└── sprites/              sprite sheets + assets
+```
+
+All definitions are validated against the JSON schemas in `schemas/` at load time. Invalid content emits structured diagnostic codes without crashing the game.
 
 <br />
 
@@ -152,8 +201,6 @@ cmake -B build
 cmake --build build
 ```
 
-> requires MSVC and vendored Aurie/YYTK SDKs (not yet bundled)
-
 ### tui
 
 ```bash
@@ -161,25 +208,11 @@ cd tui
 cargo build --release
 ```
 
-<br />
+### running tests
 
-## content packs
-
-Mods declare their content through `.efl` manifests and organized asset folders:
-
+```bash
+cd engine && ctest --test-dir build --output-on-failure
 ```
-my-mod/
-├── manifest.efl          mod metadata + capability declarations
-├── areas/                custom area definitions
-├── npcs/                 npc definitions + dialogue
-├── quests/               quest chains + triggers
-├── recipes/              crafting recipes
-├── resources/            resource node definitions
-├── warps/                warp point definitions
-└── sprites/              sprite sheets + assets
-```
-
-All definitions are validated against the JSON schemas in `schemas/` at load time.
 
 <br />
 
@@ -201,15 +234,24 @@ Categories: `BOOT` · `MANIFEST` · `HOOK` · `AREA` · `WARP` · `RESOURCE` · 
 
 | phase | milestone | status |
 |:-----:|:----------|:-------|
-| 0 | bootstrap, manifest parser, logging | ![wip](https://img.shields.io/badge/-wip-E2CBFF?style=flat-square) |
-| 1 | engine bridge (hooks, room tracker, routines) | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 2 | core services (events, saves, triggers) | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 3 | area / warp mvp | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 4 | resources mvp | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 5 | quests / unlocks mvp | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 6 | npc mvp (local npcs) | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 7 | crafting / story integration | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
-| 8 | world npcs, cross-area schedules, ipc | ![planned](https://img.shields.io/badge/-planned-D0D0D0?style=flat-square) |
+| 0 | bootstrap, manifest parser, logging | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 1 | engine bridge (hooks, room tracker, routines) | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 2 | core services (events, saves, triggers) | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 3 | area / warp mvp | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 4 | resources mvp | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 5 | quests / unlocks mvp | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 6 | npc mvp (local npcs) | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 7 | crafting / story integration | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+| 8 | world state, cross-mod ipc | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+
+### v2 (planned)
+
+| feature | status |
+|:--------|:-------|
+| script injection (custom NPC behaviors, player abilities) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
+| world NPCs (global schedules, hearts, gifts) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
+| native room creation | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
+| hot-reload for development | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
 
 <br />
 
