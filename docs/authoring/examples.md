@@ -32,8 +32,8 @@ examples/hello_adventurer/
     "schemaVersion": 1,
     "modId": "com.efl.example.hello-adventurer",
     "name": "Hello, Adventurer!",
-    "version": "1.0.0",
-    "eflVersion": "1.0.0-pre.1",
+    "version": "1.0.0-pre.2",
+    "eflVersion": "1.0.0-pre.2",
     "features": {
         "areas": true,
         "warps": true,

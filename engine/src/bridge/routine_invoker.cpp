@@ -2,6 +2,10 @@
 
 namespace efl::bridge {
 
+#ifdef EFL_STUB_SDK
+
+// ── Stub implementation (for tests) ─────────────────────────────────────────
+
 RoutineInvoker::RoutineInvoker(YYTK::YYTKInterface* yytk)
     : yytk_(yytk) {}
 
@@ -35,5 +39,46 @@ std::optional<YYTK::RValue> RoutineInvoker::invoke(const std::string& name,
 void RoutineInvoker::clearCache() {
     cache_.clear();
 }
+
+#else // Real SDK
+
+// ── Real implementation ─────────────────────────────────────────────────────
+
+RoutineInvoker::RoutineInvoker(YYTK::YYTKInterface* yytk)
+    : yytk_(yytk) {}
+
+bool RoutineInvoker::hasRoutine(const std::string& name) {
+    return getRoutinePointer(name) != nullptr;
+}
+
+YYTK::RValue RoutineInvoker::callBuiltin(const std::string& name,
+                                          std::vector<YYTK::RValue> args) {
+    if (!yytk_) return {};
+    return yytk_->CallBuiltin(name.c_str(), std::move(args));
+}
+
+YYTK::RValue RoutineInvoker::callGameScript(const std::string& name,
+                                              std::vector<YYTK::RValue> args) {
+    if (!yytk_) return {};
+    return yytk_->CallGameScript(name, args);
+}
+
+void* RoutineInvoker::getRoutinePointer(const std::string& name) {
+    auto it = cache_.find(name);
+    if (it != cache_.end()) return it->second;
+
+    void* ptr = nullptr;
+    if (yytk_) {
+        yytk_->GetNamedRoutinePointer(name.c_str(), &ptr);
+    }
+    cache_[name] = ptr;
+    return ptr;
+}
+
+void RoutineInvoker::clearCache() {
+    cache_.clear();
+}
+
+#endif // EFL_STUB_SDK
 
 } // namespace efl::bridge

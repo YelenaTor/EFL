@@ -1,11 +1,23 @@
 #include "efl/core/save_service.h"
+#include "efl/ipc/pipe_writer.h"
 
 namespace efl {
+
+void SaveService::setPipeWriter(PipeWriter* pipe) {
+    pipe_ = pipe;
+}
 
 void SaveService::set(const std::string& modId, const std::string& feature,
                       const std::string& contentId, const nlohmann::json& data) {
     std::lock_guard<std::mutex> lock(mutex_);
     store_[modId][feature][contentId] = data;
+
+    if (pipe_) {
+        pipe_->write("save.operation", nlohmann::json{
+            {"operation", "set"},
+            {"path", "EFL/" + modId + "/" + feature + "/" + contentId}
+        });
+    }
 }
 
 std::optional<nlohmann::json> SaveService::get(const std::string& modId,
@@ -34,6 +46,13 @@ void SaveService::remove(const std::string& modId, const std::string& feature,
     if (featureIt == modIt->end()) return;
 
     featureIt->erase(contentId);
+
+    if (pipe_) {
+        pipe_->write("save.operation", nlohmann::json{
+            {"operation", "remove"},
+            {"path", "EFL/" + modId + "/" + feature + "/" + contentId}
+        });
+    }
 }
 
 nlohmann::json SaveService::serialize() const {

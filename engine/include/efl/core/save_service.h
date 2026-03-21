@@ -10,8 +10,12 @@
 
 namespace efl {
 
+class PipeWriter; // forward
+
 class SaveService {
 public:
+    void setPipeWriter(PipeWriter* pipe);
+
     /// Store data at namespaced path EFL/<modId>/<feature>/<contentId>.
     void set(const std::string& modId, const std::string& feature,
              const std::string& contentId, const nlohmann::json& data);
@@ -34,6 +38,7 @@ public:
     void clear();
 
 private:
+    PipeWriter* pipe_ = nullptr;
     mutable std::mutex mutex_;
     // store_[modId][feature][contentId] = data
     nlohmann::json store_ = nlohmann::json::object();

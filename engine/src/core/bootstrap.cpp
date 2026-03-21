@@ -8,6 +8,13 @@
 #include <windows.h>
 #endif
 
+#ifndef EFL_STUB_SDK
+#include "efl/bridge/hooks.h"
+#include "efl/bridge/room_tracker.h"
+#include "efl/bridge/routine_invoker.h"
+#include "efl/bridge/instance_walker.h"
+#endif
+
 namespace efl {
 
 namespace {
@@ -44,7 +51,18 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     pipe_ = std::make_unique<PipeWriter>(buildPipeName());
     pipe_->create(); // Best-effort; bootstrap continues even if pipe fails
 
+    // Wire pipe to services for IPC message emission
+    diagnostics_.setPipeWriter(pipe_.get());
+    events_.setPipeWriter(pipe_.get());
+    saves_.setPipeWriter(pipe_.get());
+
     log_.info("BOOT", "EFL v" + eflVersionString() + " initializing");
+
+    // Phase: boot
+    if (pipe_) {
+        pipe_->write("phase.transition", nlohmann::json{
+            {"phase", "boot"}, {"status", "started"}});
+    }
 
     if (!stepVersionCheck())
         return false;
@@ -55,7 +73,31 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     if (!stepValidateManifests())
         return false;
 
+    // Phase: diagnostics
+    if (pipe_) {
+        pipe_->write("phase.transition", nlohmann::json{
+            {"phase", "diagnostics"}, {"status", "started"}});
+    }
+
     stepLoadContent(contentDir);
+
+    // Emit mod.status for each loaded manifest
+    for (const auto& m : manifests_) {
+        if (pipe_) {
+            pipe_->write("mod.status", nlohmann::json{
+                {"modId", m.modId},
+                {"name", m.name},
+                {"version", m.version},
+                {"status", "loaded"}
+            });
+        }
+    }
+
+    // Phase: boot complete
+    if (pipe_) {
+        pipe_->write("phase.transition", nlohmann::json{
+            {"phase", "boot"}, {"status", "complete"}});
+    }
 
     emitBootStatus("init", "complete",
                    std::to_string(manifests_.size()) + " manifest(s) loaded");
@@ -64,7 +106,140 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     return true;
 }
 
+#ifndef EFL_STUB_SDK
+bool EflBootstrap::initialize(const std::string& contentDir,
+                               Aurie::AurieModule* module, YYTK::YYTKInterface* yytk) {
+    // Run base initialization (pipe, discovery, validation, content loading)
+    if (!initialize(contentDir))
+        return false;
+
+    emitBootStatus("bridge", "running");
+
+    // Create bridge objects
+    hooks_ = std::make_unique<bridge::HookRegistry>(module, yytk);
+    hooks_->setPipeWriter(pipe_.get());
+    roomTracker_ = std::make_unique<bridge::RoomTracker>(yytk);
+    routineInvoker_ = std::make_unique<bridge::RoutineInvoker>(yytk);
+    instanceWalker_ = std::make_unique<bridge::InstanceWalker>(yytk);
+
+    // Register v1 hooks
+    stepRegisterHooks();
+
+    // Connect registries to bridge
+    stepConnectAreaRegistry();
+    stepConnectWarpService();
+
+    emitBootStatus("bridge", "pass");
+    log_.info("BOOT", "Bridge layer initialized");
+    return true;
+}
+
+void EflBootstrap::stepRegisterHooks() {
+    // Room transition detection (MUST)
+    if (hooks_->registerScriptHook("room_transition",
+            "gml_Object_obj_roomtransition_Create_0",
+            [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode* code,
+                   int, YYTK::RValue*) -> bool {
+                // Room transition detected — tracker will pick up the new room via frame callback
+                log_.info("HOOK", "Room transition triggered");
+                return false;
+            })) {
+        log_.info("HOOK", "Registered: room_transition");
+        emitBootStatus("hook.registered", "pass", "room_transition");
+    } else {
+        log_.warn("HOOK", "Failed to register room_transition hook");
+        diagnostics_.emit("HOOK-W003", Severity::Warning, "HOOK",
+                          "Failed to register room_transition hook",
+                          "Room transitions may not be detected");
+    }
+
+    // Grid initialization (MUST)
+    if (hooks_->registerScriptHook("grid_init",
+            "gml_Script_initialize_on_room_start@Grid@Grid",
+            [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
+                   int, YYTK::RValue*) -> bool {
+                log_.info("HOOK", "Grid initialization triggered");
+                return false;
+            })) {
+        log_.info("HOOK", "Registered: grid_init");
+        emitBootStatus("hook.registered", "pass", "grid_init");
+    } else {
+        log_.warn("HOOK", "Failed to register grid_init hook");
+        diagnostics_.emit("HOOK-W003", Severity::Warning, "HOOK",
+                          "Failed to register grid_init hook",
+                          "Room grid setup may not work");
+    }
+
+    // Frame callback for room tracking + trigger evaluation (MUST)
+    if (hooks_->registerFrameCallback("frame_update", [this]() {
+                roomTracker_->update();
+            })) {
+        log_.info("HOOK", "Registered: frame_update");
+        emitBootStatus("hook.registered", "pass", "frame_update");
+    } else {
+        log_.warn("HOOK", "Failed to register frame_update callback");
+        diagnostics_.emit("HOOK-W003", Severity::Warning, "HOOK",
+                          "Failed to register frame_update callback",
+                          "Room tracking will not function");
+    }
+
+    // Resource node hooks (SHOULD — graceful degradation)
+    for (const auto& hookName : {"pick_node", "hoe_node", "water_node"}) {
+        std::string target = std::string("gml_Script_") + hookName;
+        if (hooks_->registerScriptHook(hookName, target,
+                [this, hookName](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
+                       int, YYTK::RValue*) -> bool {
+                    log_.info("HOOK", std::string("Resource node interaction: ") + hookName);
+                    return false;
+                })) {
+            log_.info("HOOK", std::string("Registered: ") + hookName);
+            emitBootStatus("hook.registered", "pass", hookName);
+        } else {
+            diagnostics_.emit("HOOK-W003", Severity::Warning, "HOOK",
+                              std::string("Failed to register ") + hookName + " hook",
+                              "Resource interactions may not be intercepted");
+        }
+    }
+}
+
+void EflBootstrap::stepConnectAreaRegistry() {
+    // When room changes, check if the new room is hijacked by an EFL area.
+    roomTracker_->onRoomChange([this](const std::string& oldRoom, const std::string& newRoom) {
+        log_.info("ROOM", "Room changed: " + oldRoom + " -> " + newRoom);
+
+        // Check if any registered area hijacks this room
+        auto areas = registries_.areas().areasByHostRoom(newRoom);
+        for (const auto* area : areas) {
+            log_.info("AREA", "Activating EFL area '" + area->id +
+                      "' in hijacked room: " + newRoom);
+            // Area activation: the HijackedRoomBackend would clear default
+            // content and spawn EFL-defined entities here.
+        }
+    });
+}
+
+void EflBootstrap::stepConnectWarpService() {
+    // When room changes, check if any warp should fire.
+    roomTracker_->onRoomChange([this](const std::string& oldRoom, const std::string& newRoom) {
+        auto warps = registries_.warps().warpsFrom(newRoom);
+        for (const auto* warp : warps) {
+            if (registries_.warps().canWarp(warp->id, registries_.triggers())) {
+                log_.info("WARP", "Warp available: " + warp->id +
+                          " (" + warp->sourceArea + " -> " + warp->targetArea + ")");
+            }
+        }
+    });
+}
+
+#endif // EFL_STUB_SDK
+
 void EflBootstrap::shutdown() {
+#ifndef EFL_STUB_SDK
+    hooks_.reset();
+    roomTracker_.reset();
+    routineInvoker_.reset();
+    instanceWalker_.reset();
+#endif
     if (pipe_) {
         pipe_->close();
     }
@@ -75,6 +250,8 @@ LogService& EflBootstrap::log() { return log_; }
 DiagnosticEmitter& EflBootstrap::diagnostics() { return diagnostics_; }
 PipeWriter& EflBootstrap::pipe() { return *pipe_; }
 RegistryService& EflBootstrap::registries() { return registries_; }
+EventBus& EflBootstrap::events() { return events_; }
+SaveService& EflBootstrap::saves() { return saves_; }
 const std::vector<Manifest>& EflBootstrap::manifests() const { return manifests_; }
 
 bool EflBootstrap::stepVersionCheck() {

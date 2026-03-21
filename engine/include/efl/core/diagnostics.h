@@ -20,8 +20,12 @@ struct DiagnosticEntry {
     std::string suggestion;
 };
 
+class PipeWriter; // forward
+
 class DiagnosticEmitter {
 public:
+    void setPipeWriter(PipeWriter* pipe);
+
     void emit(const std::string& code, Severity severity,
               const std::string& category, const std::string& message,
               const std::string& suggestion = "");
@@ -33,6 +37,7 @@ public:
 
 private:
     std::vector<DiagnosticEntry> entries_;
+    PipeWriter* pipe_ = nullptr;
 };
 
 } // namespace efl

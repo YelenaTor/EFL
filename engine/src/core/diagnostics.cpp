@@ -1,8 +1,13 @@
 #include "efl/core/diagnostics.h"
+#include "efl/ipc/pipe_writer.h"
 
 #include <algorithm>
 
 namespace efl {
+
+void DiagnosticEmitter::setPipeWriter(PipeWriter* pipe) {
+    pipe_ = pipe;
+}
 
 std::string severityWireName(Severity s) {
     switch (s) {
@@ -16,7 +21,12 @@ std::string severityWireName(Severity s) {
 void DiagnosticEmitter::emit(const std::string& code, Severity severity,
                               const std::string& category, const std::string& message,
                               const std::string& suggestion) {
-    entries_.push_back(DiagnosticEntry{code, severity, category, message, suggestion});
+    DiagnosticEntry entry{code, severity, category, message, suggestion};
+    entries_.push_back(entry);
+
+    if (pipe_) {
+        pipe_->write("diagnostic", toJson(entry));
+    }
 }
 
 const std::vector<DiagnosticEntry>& DiagnosticEmitter::all() const {

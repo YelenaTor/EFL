@@ -11,7 +11,21 @@
 #include "efl/core/config_service.h"
 #include "efl/core/compatibility_service.h"
 #include "efl/core/registry_service.h"
+#include "efl/core/event_bus.h"
+#include "efl/core/save_service.h"
 #include "efl/ipc/pipe_writer.h"
+
+#ifndef EFL_STUB_SDK
+// Forward declarations for real SDK types and bridge classes
+namespace Aurie { struct AurieModule; }
+namespace YYTK { struct YYTKInterface; }
+namespace efl::bridge {
+    class HookRegistry;
+    class RoomTracker;
+    class RoutineInvoker;
+    class InstanceWalker;
+}
+#endif
 
 namespace efl {
 
@@ -20,13 +34,23 @@ public:
     EflBootstrap();
     ~EflBootstrap();
 
+    // Stub/test initialization — no bridge layer
     bool initialize(const std::string& contentDir);
+
+#ifndef EFL_STUB_SDK
+    // Real initialization — sets up bridge layer with Aurie/YYTK
+    bool initialize(const std::string& contentDir,
+                    Aurie::AurieModule* module, YYTK::YYTKInterface* yytk);
+#endif
+
     void shutdown();
 
     LogService& log();
     DiagnosticEmitter& diagnostics();
     PipeWriter& pipe();
     RegistryService& registries();
+    EventBus& events();
+    SaveService& saves();
     const std::vector<Manifest>& manifests() const;
 
 private:
@@ -34,8 +58,22 @@ private:
     DiagnosticEmitter diagnostics_;
     std::unique_ptr<PipeWriter> pipe_;
     RegistryService registries_;
+    EventBus events_;
+    SaveService saves_;
     ConfigService config_;
     std::vector<Manifest> manifests_;
+
+#ifndef EFL_STUB_SDK
+    // Bridge layer (Layer B) — owned by bootstrap, null in stub mode
+    std::unique_ptr<bridge::HookRegistry> hooks_;
+    std::unique_ptr<bridge::RoomTracker> roomTracker_;
+    std::unique_ptr<bridge::RoutineInvoker> routineInvoker_;
+    std::unique_ptr<bridge::InstanceWalker> instanceWalker_;
+
+    void stepRegisterHooks();
+    void stepConnectAreaRegistry();
+    void stepConnectWarpService();
+#endif
 
     bool stepVersionCheck();
     bool stepDiscoverManifests(const std::string& contentDir);

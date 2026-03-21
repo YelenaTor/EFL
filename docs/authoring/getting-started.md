@@ -28,7 +28,7 @@ Create `manifest.efl` in your pack folder:
     "modId": "com.yourname.my-first-pack",
     "name": "My First Pack",
     "version": "0.1.0",
-    "eflVersion": "1.0.0-pre.1",
+    "eflVersion": "1.0.0-pre.2",
     "dependencies": {
         "required": [],
         "optional": []
