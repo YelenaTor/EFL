@@ -6,8 +6,8 @@
   <br />
   <sub>by yoru — runtime expansion framework for fields of mistria</sub>
   <br /><br />
-  <a href="#"><img src="https://img.shields.io/badge/EFL-v0.2.0-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-in%20development-D5A6BD?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/EFL-v1.0.0-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/status-v1.0.0-D5A6BD?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-windows-A4C2F4?style=flat-square&labelColor=2D2D2D" alt="Platform" /></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B%2020%20%7C%20Rust-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Languages" /></a>
 </p>
