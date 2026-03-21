@@ -1,0 +1,60 @@
+==========================================================
+  EFL DevKit — Getting Started
+==========================================================
+
+The fastest way to learn EFL content pack authoring is to study the
+included example mod: "Hello, Adventurer!"
+
+WHERE TO FIND IT
+  The example mod lives in the EFL repository at:
+    examples/hello_adventurer/
+
+  It is also included in the Player release zip (EFL-{version}.zip)
+  as a ready-to-use content pack.
+
+WHAT IT DEMONSTRATES
+  - manifest.efl    — Declaring mod identity, features, and settings
+  - areas/          — Hijacking an existing game room
+  - npcs/           — Spawning a local NPC with a portrait pack
+  - dialogue/       — Flag-gated dialogue with escalating conditions
+  - triggers/       — Simple flag-based triggers
+  - warps/          — Connecting areas with warp points
+  - events/         — First-entry events with flag-setting commands
+
+CONTENT PACK STRUCTURE
+  Every content pack is a folder containing a manifest.efl at its root,
+  plus subdirectories for each content type:
+
+    my_mod/
+    ├── manifest.efl           (required)
+    ├── areas/*.json
+    ├── npcs/*.json
+    ├── dialogue/*.json
+    ├── triggers/*.json
+    ├── warps/*.json
+    ├── events/*.json
+    ├── resources/*.json
+    └── recipes/*.json
+
+  Only include directories for features declared in your manifest.
+  In strict mode, EFL will reject access to undeclared features.
+
+MANIFEST FORMAT
+  See the example manifest.efl for the full structure. Key fields:
+    modId       — Unique reverse-domain ID (e.g. "com.you.your-mod")
+    name        — Human-readable mod name
+    version     — Semver version string
+    eflVersion  — Minimum EFL version required
+    features    — Boolean map of which content types your mod uses
+    settings    — strictMode, areaBackend, saveScope
+
+JSON SCHEMAS
+  Full JSON schemas for all content types are in the EFL repository:
+    schemas/*.schema.json
+
+NEXT STEPS
+  1. Copy the example mod folder and rename it
+  2. Change the modId and name in manifest.efl
+  3. Edit the content JSON files to define your own areas, NPCs, etc.
+  4. Drop the folder into <game folder>\mods\efl\
+  5. Launch the game with the TUI running to see diagnostics

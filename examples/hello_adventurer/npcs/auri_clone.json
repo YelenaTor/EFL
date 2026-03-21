@@ -1,0 +1,10 @@
+{
+    "id": "auri_clone",
+    "displayName": "???",
+    "kind": "local",
+    "defaultArea": "example_room",
+    "spawnAnchor": "center",
+    "portraitPack": "celine",
+    "dialogueSet": "auri_clone_dialogue",
+    "unlockTrigger": ""
+}

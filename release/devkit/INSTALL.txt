@@ -1,0 +1,26 @@
+==========================================================
+  EFL DevKit — Installation Guide
+==========================================================
+
+This is the EFL developer kit. It includes the EFL engine DLL and the
+diagnostic TUI (Terminal User Interface) for mod development.
+
+REQUIREMENTS
+  - Fields of Mistria (Steam)
+  - MOMI (Mods of Mistria Installer) — installed and working
+  - Aurie module loader + YYToolkit — installed via MOMI
+
+INSTALLING THE ENGINE DLL
+  1. Locate your Fields of Mistria install folder.
+     Usually: C:\Program Files (x86)\Steam\steamapps\common\Fields of Mistria
+  2. Copy EFL.dll into the Aurie modules folder:
+       <game folder>\mods\aurie\
+  3. Launch the game. EFL will load automatically and write logs to:
+       <game folder>\EFL\logs\
+
+INSTALLING THE TUI
+  1. Place efl-tui.exe somewhere on your PATH, or in the game folder.
+  2. See TUI_USAGE.txt for detailed usage instructions.
+
+CONTENT PACK DEVELOPMENT
+  See GETTING_STARTED.txt for how to create your first content pack.

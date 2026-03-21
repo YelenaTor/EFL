@@ -1,0 +1,9 @@
+{
+    "id": "example_room",
+    "displayName": "Strange Empty Room",
+    "backend": "hijacked",
+    "hostRoom": "rm_water_seal_0",
+    "music": "",
+    "entryAnchor": "door_south",
+    "unlockTrigger": ""
+}

@@ -1,0 +1,90 @@
+{
+    "id": "auri_clone_dialogue",
+    "npc": "auri_clone",
+    "entries": [
+        {
+            "id": "welcome_01",
+            "text": "Oh! Hello there, adventurer! Welcome to the Example Room!",
+            "portrait": "happy",
+            "condition": ""
+        },
+        {
+            "id": "welcome_02",
+            "text": "Pretty impressive, right? A whole room, just for you. Well... and me, I suppose.",
+            "portrait": "wink",
+            "condition": ""
+        },
+        {
+            "id": "welcome_03",
+            "text": "Anyway -- congratulations on getting here! This means EFL is working. Go you!",
+            "portrait": "happy",
+            "condition": ""
+        },
+        {
+            "id": "still_here_01",
+            "text": "Oh, you're... still here? I figured you'd have wandered off by now.",
+            "portrait": "embarrassed",
+            "condition": "flag:talked_once"
+        },
+        {
+            "id": "still_here_02",
+            "text": "There's not really much to see. It's an empty room. That's kind of the whole point.",
+            "portrait": "neutral",
+            "condition": "flag:talked_once"
+        },
+        {
+            "id": "annoyed_01",
+            "text": "You again? Look, I appreciate the enthusiasm, but I only have so many lines.",
+            "portrait": "annoyed",
+            "condition": "flag:talked_twice"
+        },
+        {
+            "id": "annoyed_02",
+            "text": "Seriously, the door is RIGHT THERE. There are fields to tend. Cows to befriend. Go!",
+            "portrait": "mad",
+            "condition": "flag:talked_twice"
+        },
+        {
+            "id": "exasperated_01",
+            "text": "...You're doing this on purpose, aren't you.",
+            "portrait": "think",
+            "condition": "flag:talked_three"
+        },
+        {
+            "id": "exasperated_02",
+            "text": "I'm a DEMO NPC. I exist to prove the framework works. My entire life is this room.",
+            "portrait": "sad",
+            "condition": "flag:talked_three"
+        },
+        {
+            "id": "exasperated_03",
+            "text": "Please don't make it weirder than it already is.",
+            "portrait": "embarrassed",
+            "condition": "flag:talked_three"
+        },
+        {
+            "id": "passive_01",
+            "text": "Oh good. You're back. My favourite thing.",
+            "portrait": "ugh",
+            "condition": "flag:talked_four"
+        },
+        {
+            "id": "passive_02",
+            "text": "You know what, fine. Stay. I'll just stand here. We can both stand here. In this empty room. Forever.",
+            "portrait": "ugh",
+            "condition": "flag:talked_four"
+        },
+        {
+            "id": "silent_01",
+            "text": "...",
+            "portrait": "neutral",
+            "condition": "flag:talked_five"
+        },
+        {
+            "id": "silent_02",
+            "text": "... ... ...",
+            "portrait": "sad",
+            "condition": "flag:talked_five"
+        }
+    ]
+}

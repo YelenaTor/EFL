@@ -1,0 +1,34 @@
+==========================================================
+  EFL (Expansion Framework Library) — Installation Guide
+==========================================================
+
+REQUIREMENTS
+  - Fields of Mistria (Steam)
+  - MOMI (Mods of Mistria Installer) — installed and working
+  - Aurie module loader + YYToolkit — installed via MOMI
+
+INSTALLING EFL
+  1. Locate your Fields of Mistria install folder.
+     Usually: C:\Program Files (x86)\Steam\steamapps\common\Fields of Mistria
+  2. Copy EFL.dll into the Aurie modules folder:
+       <game folder>\mods\aurie\
+     If the folder doesn't exist, make sure Aurie is installed via MOMI first.
+  3. Launch the game. EFL will load automatically.
+
+INSTALLING AN EFL CONTENT PACK
+  1. Create a folder called "efl" inside your mods folder if it doesn't exist:
+       <game folder>\mods\efl\
+  2. Copy the content pack folder (e.g. "hello_adventurer") into it:
+       <game folder>\mods\efl\hello_adventurer\
+     The folder must contain a manifest.efl file at its root.
+  3. Launch the game. EFL will discover and load the pack automatically.
+
+INCLUDED: HELLO, ADVENTURER!
+  This zip includes the "Hello, Adventurer!" example content pack.
+  It adds a small room with an NPC who... doesn't appreciate repeat visits.
+  Drop the hello_adventurer/ folder into <game folder>\mods\efl\ to try it.
+
+TROUBLESHOOTING
+  - Make sure MOMI, Aurie, and YYToolkit are all up to date.
+  - Check the EFL log at: <game folder>\EFL\logs\
+  - If the game crashes on startup, remove EFL.dll and report the issue.

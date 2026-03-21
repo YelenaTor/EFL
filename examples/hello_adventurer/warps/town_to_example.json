@@ -1,0 +1,9 @@
+{
+    "id": "town_to_example_room",
+    "sourceArea": "town",
+    "sourceAnchor": "example_door",
+    "targetArea": "example_room",
+    "targetAnchor": "door_south",
+    "requireTrigger": "",
+    "failureText": ""
+}

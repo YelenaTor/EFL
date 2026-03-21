@@ -78,24 +78,46 @@ jobs:
           name: efl-engine-windows
           path: artifacts/engine
 
-      - name: Package release assets
+      - name: Package Player zip
         run: |
-          cd artifacts
-          zip -j ../efl-tui-${{ github.ref_name }}-windows.zip tui/efl-tui.exe 2>/dev/null || true
-          zip -j ../efl-engine-${{ github.ref_name }}-windows.zip engine/EFL.dll 2>/dev/null || true
+          VERSION=${{ github.ref_name }}
+          STAGE="EFL-${VERSION}"
+          mkdir -p "${STAGE}/hello_adventurer"
+          cp artifacts/engine/EFL.dll "${STAGE}/" 2>/dev/null || true
+          cp release/player/INSTALL.txt "${STAGE}/"
+          cp -r examples/hello_adventurer/* "${STAGE}/hello_adventurer/"
+          zip -r "EFL-${VERSION}.zip" "${STAGE}"
+
+      - name: Package DevKit zip
+        run: |
+          VERSION=${{ github.ref_name }}
+          STAGE="EFL-DevKit-${VERSION}"
+          mkdir -p "${STAGE}"
+          cp artifacts/engine/EFL.dll "${STAGE}/" 2>/dev/null || true
+          cp artifacts/tui/efl-tui.exe "${STAGE}/" 2>/dev/null || true
+          cp release/devkit/INSTALL.txt "${STAGE}/"
+          cp release/devkit/TUI_USAGE.txt "${STAGE}/"
+          cp release/devkit/GETTING_STARTED.txt "${STAGE}/"
+          zip -r "EFL-DevKit-${VERSION}.zip" "${STAGE}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
           files: |
-            efl-tui-${{ github.ref_name }}-windows.zip
-            efl-engine-${{ github.ref_name }}-windows.zip
+            EFL-${{ github.ref_name }}.zip
+            EFL-DevKit-${{ github.ref_name }}.zip
           body: |
             ## EFL ${{ github.ref_name }}
 
-            ### Assets
-            - **efl-tui** — Terminal UI loader and monitor
-            - **efl-engine** — Engine DLL (requires Aurie + YYToolkit)
+            ### Downloads
+
+            - **EFL-${{ github.ref_name }}.zip** — For players: EFL engine + example content pack + install guide
+            - **EFL-DevKit-${{ github.ref_name }}.zip** — For developers: EFL engine + TUI diagnostic tool + dev guides
+
+            ### Player Install
+            Drop `EFL.dll` into `<game>\mods\aurie\` and content packs into `<game>\mods\efl\`.
+
+            ### Developer Install
+            See `INSTALL.txt` and `TUI_USAGE.txt` in the DevKit zip.
 
             > Engine DLL build may be incomplete until Aurie/YYTK SDKs are vendored.

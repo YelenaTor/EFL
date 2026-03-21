@@ -1,0 +1,27 @@
+[
+    {
+        "id": "talked_once_trigger",
+        "type": "flagSet",
+        "flagName": "talked_once"
+    },
+    {
+        "id": "talked_twice_trigger",
+        "type": "flagSet",
+        "flagName": "talked_twice"
+    },
+    {
+        "id": "talked_three_trigger",
+        "type": "flagSet",
+        "flagName": "talked_three"
+    },
+    {
+        "id": "talked_four_trigger",
+        "type": "flagSet",
+        "flagName": "talked_four"
+    },
+    {
+        "id": "talked_five_trigger",
+        "type": "flagSet",
+        "flagName": "talked_five"
+    }
+]
