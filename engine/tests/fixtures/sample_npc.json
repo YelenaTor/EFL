@@ -1,0 +1,9 @@
+{
+    "id": "flora_spirit",
+    "displayName": "Flora",
+    "kind": "local",
+    "defaultArea": "crystal_cave",
+    "spawnAnchor": "npc_spot_01",
+    "dialogueSet": "flora_intro",
+    "unlockTrigger": "has_crystals"
+}

@@ -1,0 +1,9 @@
+{
+    "id": "flora_intro",
+    "npc": "flora_spirit",
+    "entries": [
+        {"id": "greet", "text": "Welcome to the Crystal Cave!", "portrait": "flora_happy"},
+        {"id": "quest_hint", "text": "I've lost something precious...", "portrait": "flora_sad",
+         "condition": "flag:met_flora"}
+    ]
+}
