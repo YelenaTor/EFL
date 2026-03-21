@@ -22,3 +22,6 @@ tui/target/
 .vscode/
 *.user
 CMakeUserPresets.json
+
+# Worktrees
+.worktrees/
