@@ -1,0 +1,22 @@
+{
+    "schemaVersion": 1,
+    "modId": "com.test.crystalmod",
+    "name": "Crystal Cave Mod",
+    "version": "1.0.0",
+    "eflVersion": "0.2.0",
+    "features": {
+        "areas": true,
+        "warps": true,
+        "resources": true,
+        "quests": true,
+        "triggers": true,
+        "npcs": true,
+        "crafting": true,
+        "dialogue": true,
+        "story": true
+    },
+    "settings": {
+        "strictMode": false,
+        "areaBackend": "hijacked"
+    }
+}

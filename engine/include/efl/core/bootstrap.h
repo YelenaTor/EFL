@@ -40,6 +40,7 @@ private:
     bool stepVersionCheck();
     bool stepDiscoverManifests(const std::string& contentDir);
     bool stepValidateManifests();
+    void stepLoadContent(const std::string& contentDir);
     void emitBootStatus(const std::string& step, const std::string& status,
                         const std::string& detail = "");
 };

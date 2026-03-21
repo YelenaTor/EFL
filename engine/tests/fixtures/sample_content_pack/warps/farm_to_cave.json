@@ -1,0 +1,9 @@
+{
+    "id": "farm_to_cave",
+    "sourceArea": "farm",
+    "sourceAnchor": "south_exit",
+    "targetArea": "crystal_cave",
+    "targetAnchor": "cave_entrance",
+    "requireTrigger": "has_cave_key",
+    "failureText": "The cave entrance is sealed shut."
+}

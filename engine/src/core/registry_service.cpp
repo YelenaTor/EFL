@@ -2,6 +2,7 @@
 
 namespace efl {
 
-// Shell — registries will be added in later tasks
+// RegistryService holds all feature registries as value members.
+// Accessor methods are defined inline in the header.
 
 } // namespace efl

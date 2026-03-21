@@ -1,0 +1,9 @@
+{
+    "id": "crystal_cave",
+    "displayName": "Crystal Cave",
+    "backend": "hijacked",
+    "hostRoom": "rm_mine_04",
+    "music": "mus_cave_ambient",
+    "entryAnchor": "cave_entrance",
+    "unlockTrigger": "has_cave_key"
+}

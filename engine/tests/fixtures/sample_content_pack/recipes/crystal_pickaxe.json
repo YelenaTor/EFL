@@ -1,0 +1,10 @@
+{
+    "id": "crystal_pickaxe",
+    "output": "crystal_pickaxe",
+    "station": "anvil",
+    "ingredients": [
+        {"item": "mythril_chunk", "count": 5},
+        {"item": "crystal_shard", "count": 3}
+    ],
+    "unlockTrigger": "quest_done_find_crystals"
+}

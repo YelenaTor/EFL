@@ -1,0 +1,5 @@
+{
+    "id": "has_cave_key",
+    "type": "flagSet",
+    "flagName": "player_has_cave_key"
+}
