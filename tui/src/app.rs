@@ -37,6 +37,7 @@ pub struct HookEntry {
 /// An event log entry for the monitor.
 #[derive(Debug, Clone)]
 pub struct EventLogEntry {
+    #[allow(dead_code)]
     pub timestamp: String,
     pub event_type: String,
     pub detail: String,

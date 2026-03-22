@@ -9,8 +9,11 @@ use crate::theme;
 pub struct StatusCard {
     pub name: String,
     pub status: CardStatus,
+    #[allow(dead_code)]
     pub error_count: usize,
+    #[allow(dead_code)]
     pub warning_count: usize,
+    #[allow(dead_code)]
     pub hazard_count: usize,
 }
 

@@ -17,7 +17,7 @@
         "quests": false,
         "triggers": true,
         "dialogue": true,
-        "story": false,
+        "story": true,
         "ipcPublish": false,
         "ipcConsume": false,
         "migrations": false

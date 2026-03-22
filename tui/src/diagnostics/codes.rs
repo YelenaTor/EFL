@@ -37,6 +37,7 @@ impl Category {
     }
 
     /// Parse a category from its prefix string.
+    #[allow(dead_code)]
     pub fn from_prefix(s: &str) -> Option<Self> {
         match s {
             "BOOT" => Some(Category::Boot),
@@ -57,6 +58,7 @@ impl Category {
 }
 
 /// A parsed diagnostic code (e.g., MANIFEST-E001).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct DiagnosticCode {
     pub category: Category,
@@ -66,6 +68,7 @@ pub struct DiagnosticCode {
 
 impl DiagnosticCode {
     /// Parse a code string like "MANIFEST-E001".
+    #[allow(dead_code)]
     pub fn parse(code: &str) -> Option<Self> {
         let (prefix, rest) = code.rsplit_once('-')?;
         let category = Category::from_prefix(prefix)?;
@@ -89,6 +92,7 @@ impl DiagnosticCode {
     }
 
     /// Format as string (e.g., "MANIFEST-E001").
+    #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         format!(
             "{}-{}{}",

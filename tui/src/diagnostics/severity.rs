@@ -17,6 +17,7 @@ pub enum Severity {
 
 impl Severity {
     /// Wire format string (lowercase, as sent over named pipe).
+    #[allow(dead_code)]
     pub fn wire_name(&self) -> &'static str {
         match self {
             Severity::Error => "error",
@@ -26,6 +27,7 @@ impl Severity {
     }
 
     /// Single-character code used in diagnostic codes (E/W/H).
+    #[allow(dead_code)]
     pub fn code_letter(&self) -> char {
         match self {
             Severity::Error => 'E',

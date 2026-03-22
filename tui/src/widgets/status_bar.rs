@@ -15,6 +15,7 @@ pub struct StatusBar<'a> {
 }
 
 impl<'a> StatusBar<'a> {
+    #[allow(dead_code)]
     pub fn new(label: &'a str, value: u32, max: u32, color: ratatui::style::Color) -> Self {
         Self { label, value, max, color }
     }

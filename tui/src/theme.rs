@@ -10,6 +10,7 @@ pub const BG_HEADER: Color = Color::Rgb(40, 40, 40);        // #282828
 
 /// Borders
 pub const BORDER_DEFAULT: Color = Color::Rgb(64, 64, 64);   // #404040
+#[allow(dead_code)]
 pub const BORDER_ACTIVE: Color = Color::Rgb(96, 96, 96);    // #606060
 
 /// Status accents

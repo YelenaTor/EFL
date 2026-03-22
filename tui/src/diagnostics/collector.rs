@@ -8,11 +8,14 @@ pub struct Diagnostic {
     pub category: String,
     pub message: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub suggestion: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub source: Option<DiagnosticSource>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct DiagnosticSource {
     pub file: Option<String>,
@@ -45,6 +48,7 @@ impl DiagnosticCollector {
     }
 
     /// Count diagnostics by category prefix.
+    #[allow(dead_code)]
     pub fn count_by_category(&self, category: &str) -> usize {
         self.entries.iter().filter(|d| d.category == category).count()
     }
@@ -61,6 +65,7 @@ impl DiagnosticCollector {
         self.count_by_severity("hazard")
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.entries.clear();
     }
