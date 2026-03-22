@@ -9,8 +9,8 @@ Every EFL Pack must contain a `manifest.efl` file at its root. This file declare
     "schemaVersion": 1,
     "modId": "com.author.my-mod",
     "name": "My Awesome Mod",
-    "version": "1.0.0-pre.2",
-    "eflVersion": "1.0.0-pre.2",
+    "version": "1.0.0-pre.3",
+    "eflVersion": "1.0.0-pre.3",
     "dependencies": {
         "required": ["com.other.dependency"],
         "optional": ["com.other.nice-to-have"]
@@ -61,7 +61,7 @@ Every EFL Pack must contain a `manifest.efl` file at its root. This file declare
 
 - **Type**: string
 - **Required**: yes
-- **Description**: The pack's own version, following [semver](https://semver.org/) (e.g., `"1.0.0-pre.2"`, `"0.3.1-beta"`).
+- **Description**: The pack's own version, following [semver](https://semver.org/) (e.g., `"1.0.0-pre.3"`, `"0.3.1-beta"`).
 
 ### eflVersion
 
