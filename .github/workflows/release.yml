@@ -37,6 +37,7 @@ jobs:
         with:
           name: efl-tui-windows
           path: tui/target/release/efl-tui.exe
+          retention-days: 1
 
   build-engine:
     name: Build Engine DLL (Windows)
@@ -62,6 +63,7 @@ jobs:
           name: efl-engine-windows
           path: engine/build/bin/Release/EFL.dll
           if-no-files-found: warn
+          retention-days: 1
 
   release:
     name: Create Release
