@@ -138,10 +138,20 @@ void EflBootstrap::stepRegisterHooks() {
     // Room transition detection (MUST)
     if (hooks_->registerScriptHook("room_transition",
             "gml_Object_obj_roomtransition_Create_0",
-            [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode* code,
+            [this](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode* code,
                    int, YYTK::RValue*) -> bool {
-                // Room transition detected — tracker will pick up the new room via frame callback
                 log_.info("HOOK", "Room transition triggered");
+                // Try to read the target room from the transition instance for immediate detection.
+                // Falls back to frame-based polling via update() if this fails.
+                try {
+                    YYTK::RValue targetVar = instanceWalker_->getVariable(self, "target_room");
+                    YYTK::RValue nameVal = routineInvoker_->callBuiltin("room_get_name", {targetVar});
+                    std::string converted;
+                    // If we can extract the name, notify tracker immediately
+                    roomTracker_->onRoomTransition(nameVal.ToString());
+                } catch (...) {
+                    // Frame callback update() will catch the room change
+                }
                 return false;
             })) {
         log_.info("HOOK", "Registered: room_transition");
@@ -212,23 +222,139 @@ void EflBootstrap::stepConnectAreaRegistry() {
         for (const auto* area : areas) {
             log_.info("AREA", "Activating EFL area '" + area->id +
                       "' in hijacked room: " + newRoom);
-            // Area activation: the HijackedRoomBackend would clear default
-            // content and spawn EFL-defined entities here.
+
+            // 1. Destroy default instances that conflict with the hijacked area
+            try {
+                auto defaultInstances = instanceWalker_->getAll("obj_interactable");
+                for (auto* inst : defaultInstances) {
+                    routineInvoker_->callBuiltin("instance_destroy", {YYTK::RValue(inst)});
+                }
+                log_.info("AREA", "Cleared " + std::to_string(defaultInstances.size()) +
+                          " default instances in " + newRoom);
+            } catch (const std::exception& ex) {
+                log_.warn("AREA", "Failed to clear default instances: " + std::string(ex.what()));
+            }
+
+            // 2. Set music if specified
+            if (!area->music.empty()) {
+                try {
+                    YYTK::RValue musicAsset = routineInvoker_->callBuiltin("asset_get_index",
+                        {YYTK::RValue(area->music.c_str())});
+                    routineInvoker_->callBuiltin("audio_play_music", {musicAsset});
+                    log_.info("AREA", "Set music: " + area->music);
+                } catch (const std::exception& ex) {
+                    log_.warn("AREA", "Failed to set music '" + area->music + "': " + std::string(ex.what()));
+                }
+            }
+
+            // 3. Publish area.activated event
+            events_.publish("area.activated", nlohmann::json{
+                {"areaId", area->id}, {"hostRoom", newRoom}});
+
+            // 4. Emit IPC for TUI
+            if (pipe_) {
+                pipe_->write("area.activated", nlohmann::json{
+                    {"areaId", area->id}, {"hostRoom", newRoom}});
+            }
+
+            // 5. Spawn NPCs assigned to this area (Step 3)
+            auto npcs = registries_.npcs().npcsInArea(area->id);
+            for (const auto* npc : npcs) {
+                // Check unlock trigger — skip NPCs that aren't visible yet
+                if (!npc->unlockTrigger.empty() &&
+                    !registries_.triggers().evaluate(npc->unlockTrigger)) {
+                    log_.info("NPC", "NPC '" + npc->id + "' locked (trigger: " +
+                              npc->unlockTrigger + ")");
+                    continue;
+                }
+
+                // Parse spawn anchor "x,y" format
+                try {
+                    auto commaPos = npc->spawnAnchor.find(',');
+                    if (commaPos == std::string::npos) {
+                        log_.warn("NPC", "Invalid spawnAnchor for NPC '" + npc->id +
+                                  "': " + npc->spawnAnchor);
+                        continue;
+                    }
+                    double x = std::stod(npc->spawnAnchor.substr(0, commaPos));
+                    double y = std::stod(npc->spawnAnchor.substr(commaPos + 1));
+
+                    YYTK::RValue npcObj = routineInvoker_->callBuiltin("asset_get_index",
+                        {YYTK::RValue("par_NPC")});
+                    YYTK::RValue layerName(YYTK::RValue("Instances"));
+                    routineInvoker_->callBuiltin("instance_create_layer",
+                        {YYTK::RValue(x), YYTK::RValue(y), layerName, npcObj});
+
+                    log_.info("NPC", "Spawned NPC '" + npc->id + "' at (" +
+                              std::to_string(x) + ", " + std::to_string(y) + ")");
+
+                    if (pipe_) {
+                        pipe_->write("npc.spawned", nlohmann::json{
+                            {"npcId", npc->id}, {"areaId", area->id},
+                            {"x", x}, {"y", y}});
+                    }
+                } catch (const std::exception& ex) {
+                    log_.warn("NPC", "Failed to spawn NPC '" + npc->id + "': " +
+                              std::string(ex.what()));
+                }
+            }
         }
     });
 }
 
 void EflBootstrap::stepConnectWarpService() {
-    // When room changes, check if any warp should fire.
+    // On room enter, log available warps and their trigger status.
+    // Warp gating: the game's native obj_roomtransition handles the actual room_goto.
+    // EFL's role is to check trigger requirements and block transitions that aren't unlocked.
     roomTracker_->onRoomChange([this](const std::string& oldRoom, const std::string& newRoom) {
         auto warps = registries_.warps().warpsFrom(newRoom);
         for (const auto* warp : warps) {
-            if (registries_.warps().canWarp(warp->id, registries_.triggers())) {
+            bool allowed = registries_.warps().canWarp(warp->id, registries_.triggers());
+            if (allowed) {
                 log_.info("WARP", "Warp available: " + warp->id +
                           " (" + warp->sourceArea + " -> " + warp->targetArea + ")");
+            } else {
+                log_.info("WARP", "Warp locked: " + warp->id +
+                          " (requires trigger: " + warp->requireTrigger + ")");
+            }
+
+            if (pipe_) {
+                pipe_->write("warp.status", nlohmann::json{
+                    {"warpId", warp->id},
+                    {"from", warp->sourceArea},
+                    {"to", warp->targetArea},
+                    {"available", allowed}});
             }
         }
     });
+
+    // Gate room transitions via the room_transition hook.
+    // When obj_roomtransition fires, check if the target room has warps that require triggers.
+    // If a warp's trigger isn't met, suppress the transition.
+    hooks_->registerScriptHook("warp_gate",
+        "gml_Object_obj_roomtransition_Create_0",
+        [this](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode*,
+               int, YYTK::RValue*) -> bool {
+            try {
+                // Read the target room from the transition instance
+                YYTK::RValue targetVar = instanceWalker_->getVariable(self, "target_room");
+                YYTK::RValue nameVal = routineInvoker_->callBuiltin("room_get_name", {targetVar});
+                std::string targetRoom = nameVal.ToString();
+
+                // Check if any warps TO this target are locked
+                auto warpsTo = registries_.warps().warpsTo(targetRoom);
+                for (const auto* warp : warpsTo) {
+                    if (!registries_.warps().canWarp(warp->id, registries_.triggers())) {
+                        log_.info("WARP", "Blocking transition to " + targetRoom +
+                                  " — warp '" + warp->id + "' trigger not met");
+                        return true; // suppress the transition
+                    }
+                }
+            } catch (...) {
+                // If we can't read the target, allow the transition (fail-open)
+            }
+            return false;
+        });
 }
 
 #endif // EFL_STUB_SDK

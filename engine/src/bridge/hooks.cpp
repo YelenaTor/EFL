@@ -1,5 +1,9 @@
 #include "efl/bridge/hooks.h"
 
+#ifndef EFL_STUB_SDK
+#include "efl/ipc/pipe_writer.h"
+#endif
+
 namespace efl::bridge {
 
 #ifdef EFL_STUB_SDK
@@ -53,8 +57,6 @@ size_t HookRegistry::count() const {
 }
 
 #else // Real SDK
-
-#include "efl/ipc/pipe_writer.h"
 
 // ── Real implementation ─────────────────────────────────────────────────────
 
@@ -232,7 +234,21 @@ void HookRegistry::dispatchCodeEvent(YYTK::CInstance* self, YYTK::CInstance* oth
     std::string name(codeName);
     for (auto& [hookName, entry] : hooks_) {
         if (entry.kind == HookKind::Script && entry.target == name && entry.scriptCb) {
-            entry.scriptCb(self, other, code, argc, args);
+            try {
+                entry.scriptCb(self, other, code, argc, args);
+            } catch (const std::exception& ex) {
+                if (pipe_) {
+                    pipe_->write("hook.error", nlohmann::json{
+                        {"name", hookName}, {"target", name}, {"error", ex.what()}});
+                }
+                continue;
+            } catch (...) {
+                if (pipe_) {
+                    pipe_->write("hook.error", nlohmann::json{
+                        {"name", hookName}, {"target", name}, {"error", "unknown exception"}});
+                }
+                continue;
+            }
 
             if (pipe_) {
                 pipe_->write("hook.fired", nlohmann::json{
@@ -243,10 +259,34 @@ void HookRegistry::dispatchCodeEvent(YYTK::CInstance* self, YYTK::CInstance* oth
 }
 
 void HookRegistry::dispatchFrameEvent() {
+    ++frameCount_;
     for (auto& [hookName, entry] : hooks_) {
         if (entry.kind == HookKind::Frame && entry.frameCb) {
-            entry.frameCb();
+            try {
+                entry.frameCb();
+            } catch (const std::exception& ex) {
+                if (pipe_) {
+                    pipe_->write("hook.error", nlohmann::json{
+                        {"name", hookName}, {"error", ex.what()}});
+                }
+            } catch (...) {
+                if (pipe_) {
+                    pipe_->write("hook.error", nlohmann::json{
+                        {"name", hookName}, {"error", "unknown exception"}});
+                }
+            }
         }
+    }
+
+    // Emit throttled hook.fired for frame hooks so TUI has visibility (every 60 frames)
+    if (pipe_ && (frameCount_ % 60 == 0)) {
+        size_t frameHookCount = 0;
+        for (const auto& [hookName, entry] : hooks_) {
+            if (entry.kind == HookKind::Frame) ++frameHookCount;
+        }
+        pipe_->write("hook.fired", nlohmann::json{
+            {"name", "frame_hooks"}, {"kind", "frame"},
+            {"count", frameHookCount}, {"frameNumber", frameCount_}});
     }
 }
 

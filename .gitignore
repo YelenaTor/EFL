@@ -23,5 +23,8 @@ tui/target/
 *.user
 CMakeUserPresets.json
 
+# CMake test discovery artifacts
+cmake_test_discovery_*.json
+
 # Worktrees
 .worktrees/

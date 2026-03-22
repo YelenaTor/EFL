@@ -5,6 +5,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <cstdint>
 
 #ifdef EFL_STUB_SDK
 #include "efl/bridge/sdk_compat.h"
@@ -100,6 +101,7 @@ private:
 
     bool codeCallbackRegistered_ = false;
     bool frameCallbackRegistered_ = false;
+    uint64_t frameCount_ = 0;
 };
 
 } // namespace efl::bridge
