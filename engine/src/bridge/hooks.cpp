@@ -1,5 +1,7 @@
 #include "efl/bridge/hooks.h"
 
+#include <cassert>
+
 #ifndef EFL_STUB_SDK
 #include "efl/ipc/pipe_writer.h"
 #endif
@@ -86,6 +88,7 @@ static void FrameEventHandler(YYTK::FWFrame& Event) {
 
 HookRegistry::HookRegistry(Aurie::AurieModule* module, YYTK::YYTKInterface* yytk)
     : module_(module), yytk_(yytk) {
+    assert(!g_hookRegistry && "Only one HookRegistry instance may exist");
     g_hookRegistry = this;
 }
 
@@ -106,6 +109,8 @@ bool HookRegistry::registerScriptHook(const std::string& name, const std::string
 
     // Ensure the global CODE callback is registered with YYTK
     if (!codeCallbackRegistered_ && yytk_ && module_) {
+        // reinterpret_cast: ISO UB but standard YYTK/Windows callback pattern.
+        // MSVC guarantees this works. Do not "fix" to std::bit_cast or similar.
         Aurie::AurieStatus status = yytk_->CreateCallback(
             module_,
             YYTK::EVENT_OBJECT_CALL,
@@ -197,6 +202,10 @@ void HookRegistry::removeHook(const std::string& name) {
     hooks_.erase(it);
 }
 
+// NOTE: removeAll() must only be called from the GM main thread. If YYTK fires
+// a pending callback between hooks_.clear() and RemoveCallback, dispatchCodeEvent
+// sees an empty map and no-ops safely, but the ordering assumption depends on
+// single-threaded execution.
 void HookRegistry::removeAll() {
     for (auto& [name, entry] : hooks_) {
         if (entry.kind == HookKind::Detour && module_) {

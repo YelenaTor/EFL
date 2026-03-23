@@ -139,20 +139,17 @@ void EflBootstrap::stepRegisterHooks() {
     if (hooks_->registerScriptHook("room_transition",
             "gml_Object_obj_roomtransition_Create_0",
             [this](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode* code,
-                   int, YYTK::RValue*) -> bool {
+                   int, YYTK::RValue*) {
                 log_.info("HOOK", "Room transition triggered");
                 // Try to read the target room from the transition instance for immediate detection.
                 // Falls back to frame-based polling via update() if this fails.
                 try {
                     YYTK::RValue targetVar = instanceWalker_->getVariable(self, "target_room");
                     YYTK::RValue nameVal = routineInvoker_->callBuiltin("room_get_name", {targetVar});
-                    std::string converted;
-                    // If we can extract the name, notify tracker immediately
                     roomTracker_->onRoomTransition(nameVal.ToString());
                 } catch (...) {
                     // Frame callback update() will catch the room change
                 }
-                return false;
             })) {
         log_.info("HOOK", "Registered: room_transition");
         emitBootStatus("hook.registered", "pass", "room_transition");
@@ -167,9 +164,8 @@ void EflBootstrap::stepRegisterHooks() {
     if (hooks_->registerScriptHook("grid_init",
             "gml_Script_initialize_on_room_start@Grid@Grid",
             [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
-                   int, YYTK::RValue*) -> bool {
+                   int, YYTK::RValue*) {
                 log_.info("HOOK", "Grid initialization triggered");
-                return false;
             })) {
         log_.info("HOOK", "Registered: grid_init");
         emitBootStatus("hook.registered", "pass", "grid_init");
@@ -198,9 +194,8 @@ void EflBootstrap::stepRegisterHooks() {
         std::string target = std::string("gml_Script_") + hookName;
         if (hooks_->registerScriptHook(hookName, target,
                 [this, hookName](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
-                       int, YYTK::RValue*) -> bool {
+                       int, YYTK::RValue*) {
                     log_.info("HOOK", std::string("Resource node interaction: ") + hookName);
-                    return false;
                 })) {
             log_.info("HOOK", std::string("Registered: ") + hookName);
             emitBootStatus("hook.registered", "pass", hookName);
@@ -334,26 +329,25 @@ void EflBootstrap::stepConnectWarpService() {
     hooks_->registerScriptHook("warp_gate",
         "gml_Object_obj_roomtransition_Create_0",
         [this](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode*,
-               int, YYTK::RValue*) -> bool {
+               int, YYTK::RValue*) {
+            // v1: observation only — logs locked warps but cannot suppress transitions.
+            // Suppression requires wiring CodeEventCallback returns through YYTK Event.Call().
             try {
-                // Read the target room from the transition instance
                 YYTK::RValue targetVar = instanceWalker_->getVariable(self, "target_room");
                 YYTK::RValue nameVal = routineInvoker_->callBuiltin("room_get_name", {targetVar});
                 std::string targetRoom = nameVal.ToString();
 
-                // Check if any warps TO this target are locked
                 auto warpsTo = registries_.warps().warpsTo(targetRoom);
                 for (const auto* warp : warpsTo) {
                     if (!registries_.warps().canWarp(warp->id, registries_.triggers())) {
-                        log_.info("WARP", "Blocking transition to " + targetRoom +
-                                  " — warp '" + warp->id + "' trigger not met");
-                        return true; // suppress the transition
+                        log_.warn("WARP", "Transition to " + targetRoom +
+                                  " blocked by trigger '" + warp->requireTrigger +
+                                  "' on warp '" + warp->id + "' (suppression not yet wired)");
                     }
                 }
             } catch (...) {
                 // If we can't read the target, allow the transition (fail-open)
             }
-            return false;
         });
 }
 

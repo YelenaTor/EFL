@@ -6,6 +6,12 @@ namespace efl {
 void TriggerService::registerTrigger(const TriggerDef& def) {
     std::lock_guard<std::mutex> lock(mutex_);
     triggers_[def.id] = def;
+
+    // Check for reference cycles after insertion. If found, remove the trigger
+    // so it doesn't cause a stack overflow during evaluate().
+    if (hasCycleLocked(def.id)) {
+        triggers_.erase(def.id);
+    }
 }
 
 void TriggerService::registerFromJson(const nlohmann::json& j) {
@@ -85,6 +91,36 @@ bool TriggerService::evaluateCondition(const std::string& cond) const {
             }
             return false;
     }
+    return false;
+}
+
+bool TriggerService::hasCycle(const std::string& triggerId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return hasCycleLocked(triggerId);
+}
+
+bool TriggerService::hasCycleLocked(const std::string& triggerId) const {
+    std::unordered_set<std::string> visited;
+    return detectCycle(triggerId, visited);
+}
+
+bool TriggerService::detectCycle(const std::string& id,
+                                  std::unordered_set<std::string>& visited) const {
+    if (visited.count(id)) return true;
+    auto it = triggers_.find(id);
+    if (it == triggers_.end()) return false;
+
+    const TriggerDef& def = it->second;
+    if (def.type != TriggerType::AllOf && def.type != TriggerType::AnyOf)
+        return false;
+
+    visited.insert(id);
+    for (const auto& cond : def.conditions) {
+        // Skip "flag:..." literals — they don't reference other triggers
+        if (cond.starts_with("flag:")) continue;
+        if (detectCycle(cond, visited)) return true;
+    }
+    visited.erase(id);
     return false;
 }
 

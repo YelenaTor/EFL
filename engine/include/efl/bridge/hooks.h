@@ -48,8 +48,8 @@ namespace efl { class PipeWriter; }
 namespace efl::bridge {
 
 // Callback for object/script code execution events.
-// Return true to suppress the original call, false to let it run.
-using CodeEventCallback = std::function<bool(
+// v1: observation only — suppression is not wired through to YYTK's Event.Call().
+using CodeEventCallback = std::function<void(
     YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*, int, YYTK::RValue*)>;
 
 // Callback for frame events (called each Present).

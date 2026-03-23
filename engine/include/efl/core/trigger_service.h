@@ -26,6 +26,10 @@ public:
     void registerTrigger(const TriggerDef& def);
     void registerFromJson(const nlohmann::json& j);
 
+    // Returns true if the trigger references form a cycle. Called automatically
+    // during registerTrigger(); exposed for testing.
+    bool hasCycle(const std::string& triggerId) const;
+
     bool evaluate(const std::string& triggerId) const;
 
     void setFlag(const std::string& name, bool value);
@@ -44,6 +48,8 @@ private:
     std::unordered_set<std::string> completedQuests_;
 
     bool evaluateCondition(const std::string& cond) const;
+    bool hasCycleLocked(const std::string& id) const;
+    bool detectCycle(const std::string& id, std::unordered_set<std::string>& visited) const;
 };
 
 } // namespace efl
