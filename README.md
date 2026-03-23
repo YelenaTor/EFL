@@ -6,8 +6,8 @@
   <br />
   <sub>by Yoru — runtime expansion framework for fields of mistria</sub>
   <br /><br />
-  <a href="#"><img src="https://img.shields.io/badge/EFL-v1.0.0--pre.2-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-v1.0.0--pre.2%20prerelease-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/EFL-v1.0.0--pre.3-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/status-v1.0.0--pre.3%20prerelease-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-windows-A4C2F4?style=flat-square&labelColor=2D2D2D" alt="Platform" /></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B%2020%20%7C%20Rust-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Languages" /></a>
 </p>
@@ -90,7 +90,6 @@ All content is defined through JSON files validated against schemas at load time
 | ![crossterm](https://img.shields.io/badge/crossterm-0.28.1-E2CBFF?style=flat-square&labelColor=2D2D2D) | `0.28.1` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 | ![serde](https://img.shields.io/badge/serde-1.0.228-A4C2F4?style=flat-square&labelColor=2D2D2D) | `1.0.228` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 | ![serde_json](https://img.shields.io/badge/serde__json-1.0.149-D5A6BD?style=flat-square&labelColor=2D2D2D) | `1.0.149` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
-| ![jsonschema](https://img.shields.io/badge/jsonschema-0.26.2-B6D7A8?style=flat-square&labelColor=2D2D2D) | `0.26.2` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 | ![windows](https://img.shields.io/badge/windows-0.58.0-B4A7D6?style=flat-square&labelColor=2D2D2D) | `0.58.0` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 
 <br />
@@ -124,7 +123,7 @@ efl/
 │   │       └── ipc/          pipe writer, channel broker
 │   ├── src/         implementation (mirrors include/)
 │   ├── vendor/      aurie + yytk sdks
-│   └── tests/       google test suite (83 tests)
+│   └── tests/       google test suite (89 tests)
 ├── tui/             rust tui loader and monitor (cargo)
 │   └── src/
 │       ├── phases/      boot · diagnostics · monitor
@@ -252,6 +251,7 @@ Categories: `BOOT` · `MANIFEST` · `HOOK` · `AREA` · `WARP` · `RESOURCE` · 
 | world NPCs (global schedules, hearts, gifts) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
 | native room creation | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
 | hot-reload for development | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
+| creation kit (visual content pack editor) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
 
 <br />
 

@@ -28,3 +28,7 @@ cmake_test_discovery_*.json
 
 # Worktrees
 .worktrees/
+
+# Local-only docs
+docs/superpowers/
+docs/EFL_Technical_Reference.pdf
