@@ -8,7 +8,7 @@
 
 TEST(Integration, LoadContentPack) {
     efl::EflBootstrap bootstrap;
-    bool ok = bootstrap.initialize("fixtures/sample_content_pack");
+    bool ok = bootstrap.initialize("fixtures/sample_packs");
     EXPECT_TRUE(ok);
 
     auto& reg = bootstrap.registries();
@@ -40,7 +40,7 @@ TEST(Integration, LoadContentPack) {
 
 TEST(Integration, TriggerRegisteredFromPack) {
     efl::EflBootstrap bootstrap;
-    bool ok = bootstrap.initialize("fixtures/sample_content_pack");
+    bool ok = bootstrap.initialize("fixtures/sample_packs");
     EXPECT_TRUE(ok);
 
     // Trigger 'has_cave_key' should be registered (but flag not set, so evaluates false)
@@ -53,7 +53,7 @@ TEST(Integration, TriggerRegisteredFromPack) {
 
 TEST(Integration, DiagnosticsForInvalidContent) {
     efl::EflBootstrap bootstrap;
-    bootstrap.initialize("fixtures/invalid_content_pack");
+    bootstrap.initialize("fixtures/invalid_packs");
     // An invalid manifest (missing required fields) should produce at least one error
     EXPECT_GT(bootstrap.diagnostics().countBySeverity(efl::Severity::Error), 0);
 }
