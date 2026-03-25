@@ -42,7 +42,7 @@ jobs:
 
       - name: Run Engine Tests
         working-directory: engine/build
-        run: ctest --config Release --output-on-failure
+        run: ctest -C Release --output-on-failure
 
       - name: Package Player zip
         shell: bash
