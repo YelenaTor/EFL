@@ -11,7 +11,7 @@ LAUNCHING
   The TUI will wait for the game to launch and connect automatically.
 
   Alternatively, EFL can spawn the TUI as a child process if efl-tui.exe
-  is located in the game folder or on your PATH.
+  is located in the same folder as EFL.dll or on your PATH.
 
 THREE PHASES
   1. BOOT — Animated startup sequence showing version checks, manifest
@@ -40,7 +40,9 @@ VISUAL STYLE
 
 TROUBLESHOOTING
   - If the TUI shows "waiting for pipe..." indefinitely, make sure:
-    - The game is running
-    - EFL.dll is loaded (check <game folder>\EFL\logs\)
+    - The game is running with EFL.dll in mods\aurie\
+    - EFL loaded successfully (check aurie.log for MdMapImage(EFL.dll))
+    - Note: EFL does NOT appear in the YYToolkit log window — this is
+      normal. EFL loads in a later Aurie phase after the game window opens.
   - The TUI requires a terminal with ANSI color support.
     Windows Terminal and modern PowerShell work. Legacy cmd.exe may not.

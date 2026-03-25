@@ -15,11 +15,22 @@ INSTALLING THE ENGINE DLL
      Usually: C:\Program Files (x86)\Steam\steamapps\common\Fields of Mistria
   2. Copy EFL.dll into the Aurie modules folder:
        <game folder>\mods\aurie\
-  3. Launch the game. EFL will load automatically and write logs to:
-       <game folder>\EFL\logs\
+  3. Launch the game once. EFL will load automatically and set itself up.
+     On this first run, EFL creates the mods\efl\ content pack folder for you.
+
+FIRST-RUN NOTE
+  EFL loads in a later phase than other Aurie modules, after the game window
+  has appeared. It will NOT show up in the YYToolkit log window — this is
+  expected, not an error. EFL is running if the game launches without crashing.
+
+  To confirm EFL is active, check the Aurie log at:
+    <game folder>\aurie.log
+  You should see a line containing: MdMapImage(EFL.dll) returns AURIE_SUCCESS
 
 INSTALLING THE TUI
-  1. Place efl-tui.exe somewhere on your PATH, or in the game folder.
+  1. Place efl-tui.exe in the same folder as EFL.dll:
+       <game folder>\mods\aurie\
+     Or anywhere on your PATH.
   2. See TUI_USAGE.txt for detailed usage instructions.
 
 CONTENT PACK DEVELOPMENT

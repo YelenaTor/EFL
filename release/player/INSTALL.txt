@@ -13,15 +13,24 @@ INSTALLING EFL
   2. Copy EFL.dll into the Aurie modules folder:
        <game folder>\mods\aurie\
      If the folder doesn't exist, make sure Aurie is installed via MOMI first.
-  3. Launch the game. EFL will load automatically.
+  3. Launch the game once. EFL will load automatically and set itself up.
+     On this first run, EFL creates the mods\efl\ content pack folder for you.
+
+FIRST-RUN NOTE
+  EFL loads in a later phase than other Aurie modules, after the game window
+  has appeared. It will NOT show up in the YYToolkit log window — this is
+  expected, not an error. EFL is running if the game launches without crashing.
+
+  To confirm EFL is active, check the Aurie log at:
+    <game folder>\aurie.log
+  You should see a line containing: MdMapImage(EFL.dll) returns AURIE_SUCCESS
 
 INSTALLING AN EFL CONTENT PACK
-  1. Create a folder called "efl" inside your mods folder if it doesn't exist:
-       <game folder>\mods\efl\
-  2. Copy the content pack folder (e.g. "hello_adventurer") into it:
+  1. Place the content pack folder (e.g. "hello_adventurer") into:
        <game folder>\mods\efl\hello_adventurer\
      The folder must contain a manifest.efl file at its root.
-  3. Launch the game. EFL will discover and load the pack automatically.
+     (The mods\efl\ folder is created automatically on first run.)
+  2. Launch the game. EFL will discover and load the pack automatically.
 
 INCLUDED: HELLO, ADVENTURER!
   This zip includes the "Hello, Adventurer!" example content pack.
@@ -30,5 +39,5 @@ INCLUDED: HELLO, ADVENTURER!
 
 TROUBLESHOOTING
   - Make sure MOMI, Aurie, and YYToolkit are all up to date.
-  - Check the EFL log at: <game folder>\EFL\logs\
+  - EFL not appearing in the YYTK log window is normal — see FIRST-RUN NOTE.
   - If the game crashes on startup, remove EFL.dll and report the issue.

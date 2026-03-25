@@ -53,8 +53,8 @@ JSON SCHEMAS
     schemas/*.schema.json
 
 NEXT STEPS
-  1. Copy the example mod folder and rename it
-  2. Change the modId and name in manifest.efl
-  3. Edit the content JSON files to define your own areas, NPCs, etc.
-  4. Drop the folder into <game folder>\mods\efl\
-  5. Launch the game with the TUI running to see diagnostics
+  1. Run the game once with EFL.dll installed to let EFL create mods\efl\
+  2. Copy the example mod folder into mods\efl\ and rename it
+  3. Change the modId and name in manifest.efl
+  4. Edit the content JSON files to define your own areas, NPCs, etc.
+  5. Launch the game with the TUI running to see diagnostics in real time
