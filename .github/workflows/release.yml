@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build-tui:
-    name: Build TUI (Windows)
+  release:
+    name: Build and Release (Windows)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,19 +32,6 @@ jobs:
         working-directory: tui
         run: cargo build --release
 
-      - name: Upload TUI binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: efl-tui-windows
-          path: tui/target/release/efl-tui.exe
-          retention-days: 1
-
-  build-engine:
-    name: Build Engine DLL (Windows)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Configure CMake
         working-directory: engine
         run: cmake -B build
@@ -57,54 +44,29 @@ jobs:
         working-directory: engine
         run: ctest --test-dir build --config Release --output-on-failure
 
-      - name: Upload Engine DLL
-        uses: actions/upload-artifact@v4
-        with:
-          name: efl-engine-windows
-          path: engine/build/bin/Release/EFL.dll
-          if-no-files-found: warn
-          retention-days: 1
-
-  release:
-    name: Create Release
-    needs: [build-tui, build-engine]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download TUI artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: efl-tui-windows
-          path: artifacts/tui
-
-      - name: Download Engine artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: efl-engine-windows
-          path: artifacts/engine
-
       - name: Package Player zip
+        shell: bash
         run: |
           VERSION=${{ github.ref_name }}
           STAGE="EFL-${VERSION}"
           mkdir -p "${STAGE}/hello_adventurer"
-          cp artifacts/engine/EFL.dll "${STAGE}/" 2>/dev/null || true
+          cp engine/build/bin/Release/EFL.dll "${STAGE}/" 2>/dev/null || true
           cp release/player/INSTALL.txt "${STAGE}/"
           cp -r examples/hello_adventurer/* "${STAGE}/hello_adventurer/"
-          zip -r "EFL-${VERSION}.zip" "${STAGE}"
+          7z a "EFL-${VERSION}.zip" "${STAGE}"
 
       - name: Package DevKit zip
+        shell: bash
         run: |
           VERSION=${{ github.ref_name }}
           STAGE="EFL-DevKit-${VERSION}"
           mkdir -p "${STAGE}"
-          cp artifacts/engine/EFL.dll "${STAGE}/" 2>/dev/null || true
-          cp artifacts/tui/efl-tui.exe "${STAGE}/" 2>/dev/null || true
+          cp engine/build/bin/Release/EFL.dll "${STAGE}/" 2>/dev/null || true
+          cp tui/target/release/efl-tui.exe "${STAGE}/" 2>/dev/null || true
           cp release/devkit/INSTALL.txt "${STAGE}/"
           cp release/devkit/TUI_USAGE.txt "${STAGE}/"
           cp release/devkit/GETTING_STARTED.txt "${STAGE}/"
-          zip -r "EFL-DevKit-${VERSION}.zip" "${STAGE}"
+          7z a "EFL-DevKit-${VERSION}.zip" "${STAGE}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
