@@ -41,8 +41,8 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Run Engine Tests
-        working-directory: engine
-        run: ctest --test-dir build --config Release --output-on-failure
+        working-directory: engine/build
+        run: ctest --config Release --output-on-failure
 
       - name: Package Player zip
         shell: bash
