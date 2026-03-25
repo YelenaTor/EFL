@@ -43,6 +43,7 @@ struct Manifest {
     std::vector<ManifestDependency> optionalDeps;
     ManifestFeatures features;
     ManifestSettings settings;
+    std::string packDir; // absolute path to the directory containing this manifest
 };
 
 class ManifestParser {

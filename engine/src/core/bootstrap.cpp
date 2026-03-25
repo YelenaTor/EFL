@@ -387,34 +387,48 @@ bool EflBootstrap::stepDiscoverManifests(const std::string& contentDir) {
 
     namespace fs = std::filesystem;
 
-    if (!fs::exists(contentDir) || !fs::is_directory(contentDir)) {
-        log_.warn("BOOT", "Content directory not found: " + contentDir);
-        diagnostics_.emit("BOOT-W001", Severity::Warning, "BOOT",
-                          "Content directory does not exist: " + contentDir,
-                          "Create the directory and place .efl manifest files in it");
-        emitBootStatus("discover", "warn", "content directory not found");
-        // Not a fatal error — zero manifests is valid
+    if (!fs::exists(contentDir)) {
+        std::error_code ec;
+        fs::create_directories(contentDir, ec);
+        if (ec) {
+            log_.warn("BOOT", "Content directory missing and could not be created: " + contentDir);
+            diagnostics_.emit("BOOT-W001", Severity::Warning, "BOOT",
+                              "Content directory could not be created: " + contentDir,
+                              ec.message());
+            emitBootStatus("discover", "warn", "content directory missing");
+            return true;
+        }
+        log_.info("BOOT", "Created content directory: " + contentDir);
+    }
+
+    if (!fs::is_directory(contentDir)) {
+        log_.warn("BOOT", "Content path is not a directory: " + contentDir);
+        emitBootStatus("discover", "warn", "content path is not a directory");
         return true;
     }
 
     int found = 0;
+    // Each content pack lives in its own subdirectory with a manifest.efl inside.
+    // e.g. mods/efl/hello_adventurer/manifest.efl
     for (const auto& entry : fs::directory_iterator(contentDir)) {
-        if (!entry.is_regular_file())
+        if (!entry.is_directory())
             continue;
 
-        if (entry.path().extension() != ".efl")
+        fs::path manifestPath = entry.path() / "manifest.efl";
+        if (!fs::exists(manifestPath))
             continue;
 
-        auto manifest = ManifestParser::parseFile(entry.path().string());
+        auto manifest = ManifestParser::parseFile(manifestPath.string());
         if (manifest) {
+            manifest->packDir = entry.path().string();
             log_.info("BOOT", "Loaded manifest: " + manifest->modId +
                       " v" + manifest->version);
             manifests_.push_back(std::move(*manifest));
             ++found;
         } else {
-            log_.error("BOOT", "Failed to parse manifest: " + entry.path().string());
+            log_.error("BOOT", "Failed to parse manifest: " + manifestPath.string());
             diagnostics_.emit("MANIFEST-E001", Severity::Error, "MANIFEST",
-                              "Failed to parse manifest: " + entry.path().filename().string(),
+                              "Failed to parse manifest: " + manifestPath.filename().string(),
                               "Check JSON syntax and required fields");
         }
     }
@@ -461,12 +475,8 @@ void EflBootstrap::stepLoadContent(const std::string& contentDir) {
         return;
     }
 
-    // For each manifest, scan the content pack directory alongside its manifest file.
-    // The content pack directory is the directory containing the manifest.
     for (const auto& manifest : manifests_) {
-        // Find the manifest's directory (contentDir itself is the pack root when
-        // there is one manifest.efl directly inside contentDir).
-        fs::path packDir = fs::path(contentDir);
+        fs::path packDir = fs::path(manifest.packDir);
 
         log_.info("BOOT", "Loading content for: " + manifest.modId);
 
