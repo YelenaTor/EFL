@@ -1,0 +1,76 @@
+==========================================================
+  EFL JSON Schemas
+==========================================================
+
+The schemas/ folder contains JSON Schema (draft 2020-12) definitions
+for every EFL content type. They are used by:
+
+  - EFL at load time to validate your content pack files
+  - Code editors (VS Code, JetBrains, etc.) for autocomplete and
+    inline error highlighting while you write content JSON files
+
+EDITOR SETUP (VS Code)
+  1. Install the "JSON" language support extension (usually built in).
+  2. Open your VS Code workspace settings (.vscode/settings.json) and
+     add a mapping for each content type you use, for example:
+
+     {
+       "json.schemas": [
+         {
+           "fileMatch": ["*/manifest.efl"],
+           "url": "./schemas/efl-manifest.schema.json"
+         },
+         {
+           "fileMatch": ["*/areas/*.json"],
+           "url": "./schemas/area.schema.json"
+         },
+         {
+           "fileMatch": ["*/warps/*.json"],
+           "url": "./schemas/warp.schema.json"
+         },
+         {
+           "fileMatch": ["*/npcs/*.json"],
+           "url": "./schemas/npc.schema.json"
+         },
+         {
+           "fileMatch": ["*/dialogue/*.json"],
+           "url": "./schemas/dialogue.schema.json"
+         },
+         {
+           "fileMatch": ["*/triggers/*.json"],
+           "url": "./schemas/trigger.schema.json"
+         },
+         {
+           "fileMatch": ["*/quests/*.json"],
+           "url": "./schemas/quest.schema.json"
+         },
+         {
+           "fileMatch": ["*/resources/*.json"],
+           "url": "./schemas/resource.schema.json"
+         },
+         {
+           "fileMatch": ["*/recipes/*.json"],
+           "url": "./schemas/recipe.schema.json"
+         },
+         {
+           "fileMatch": ["*/events/*.json"],
+           "url": "./schemas/event.schema.json"
+         }
+       ]
+     }
+
+  3. VS Code will now show autocomplete and validation errors in
+     real time as you edit your content pack files.
+
+SCHEMA FILES
+  efl-manifest.schema.json  — manifest.efl (mod identity and features)
+  area.schema.json          — areas/*.json
+  warp.schema.json          — warps/*.json
+  npc.schema.json           — npcs/*.json
+  dialogue.schema.json      — dialogue/*.json
+  trigger.schema.json       — triggers/*.json
+  quest.schema.json         — quests/*.json
+  resource.schema.json      — resources/*.json
+  recipe.schema.json        — recipes/*.json
+  event.schema.json         — events/*.json
+  ipc-message.schema.json   — IPC pipe message format (tool authors only)

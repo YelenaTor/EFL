@@ -60,12 +60,14 @@ jobs:
         run: |
           VERSION=${{ github.ref_name }}
           STAGE="EFL-DevKit-${VERSION}"
-          mkdir -p "${STAGE}"
+          mkdir -p "${STAGE}/schemas"
           cp engine/build/bin/Release/EFL.dll "${STAGE}/" 2>/dev/null || true
           cp tui/target/release/efl-tui.exe "${STAGE}/" 2>/dev/null || true
           cp release/devkit/INSTALL.txt "${STAGE}/"
           cp release/devkit/TUI_USAGE.txt "${STAGE}/"
           cp release/devkit/GETTING_STARTED.txt "${STAGE}/"
+          cp release/devkit/SCHEMAS.txt "${STAGE}/"
+          cp schemas/*.schema.json "${STAGE}/schemas/"
           7z a "EFL-DevKit-${VERSION}.zip" "${STAGE}"
 
       - name: Create GitHub Release
