@@ -31,6 +31,7 @@ public:
 
     std::vector<LogEntry> recent(size_t count) const;
     void setFileOutput(const std::string& path);
+    bool isFileOutputOpen() const;
 
 private:
     void log(LogLevel level, const std::string& category, const std::string& message);

@@ -1,8 +1,10 @@
 #include "efl/core/bootstrap.h"
+#include "efl/core/efpack_loader.h"
 
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <thread>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -13,6 +15,8 @@
 #include "efl/bridge/room_tracker.h"
 #include "efl/bridge/routine_invoker.h"
 #include "efl/bridge/instance_walker.h"
+#include "efl/areas/HijackedRoomBackend.h"
+#include "efl/areas/NativeRoomBackend.h"
 #endif
 
 namespace efl {
@@ -47,6 +51,22 @@ EflBootstrap::~EflBootstrap() {
 }
 
 bool EflBootstrap::initialize(const std::string& contentDir) {
+    // Wire file logging: <gameDir>/EFL/logs/efl.log
+    // contentDir is <game>/mods/efl, so gameDir is two levels up
+    {
+        namespace fs = std::filesystem;
+        fs::path logDir = fs::path(contentDir).parent_path().parent_path() / "EFL" / "logs";
+        std::error_code ec;
+        fs::create_directories(logDir, ec);
+        std::string logPath = (logDir / "efl.log").string();
+        log_.setFileOutput(logPath);
+        if (!log_.isFileOutputOpen()) {
+            diagnostics_.emit("BOOT-W001", Severity::Warning, "BOOT",
+                              "Failed to open log file: " + logPath,
+                              "File logging disabled for this session");
+        }
+    }
+
     // Create the named pipe for TUI communication
     pipe_ = std::make_unique<PipeWriter>(buildPipeName());
     pipe_->create(); // Best-effort; bootstrap continues even if pipe fails
@@ -56,6 +76,7 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     events_.setPipeWriter(pipe_.get());
     saves_.setPipeWriter(pipe_.get());
 
+    contentDir_ = contentDir;
     log_.info("BOOT", "EFL v" + eflVersionString() + " initializing");
 
     // Phase: boot
@@ -103,6 +124,28 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
                    std::to_string(manifests_.size()) + " manifest(s) loaded");
     log_.info("BOOT", "Bootstrap complete — " +
               std::to_string(manifests_.size()) + " manifest(s) loaded");
+
+#ifndef EFL_STUB_SDK
+    {
+        bool watchStarted = hotReload_.start(std::filesystem::path(contentDir_),
+            [this](const ReloadEvent& ev) {
+                reloadContentType(ev.contentType, ev.filePath);
+                if (pipe_) {
+                    pipe_->write("reload.event", nlohmann::json{
+                        {"contentType", ev.contentType},
+                        {"path", ev.filePath.string()},
+                        {"status", "ok"}
+                    });
+                }
+            });
+        if (!watchStarted) {
+            diagnostics_.emit("RELOAD-W001", Severity::Warning, "BOOT",
+                              "Hot-reload watcher failed to start for: " + contentDir_,
+                              "Content changes will not be detected at runtime");
+        }
+    }
+#endif
+
     return true;
 }
 
@@ -121,6 +164,28 @@ bool EflBootstrap::initialize(const std::string& contentDir,
     roomTracker_ = std::make_unique<bridge::RoomTracker>(yytk);
     routineInvoker_ = std::make_unique<bridge::RoutineInvoker>(yytk);
     instanceWalker_ = std::make_unique<bridge::InstanceWalker>(yytk);
+
+    // Select area backend based on manifest settings (first manifest wins, default "hijacked")
+    {
+        std::string backendType = "hijacked";
+        if (!manifests_.empty()) {
+            backendType = manifests_.front().settings.areaBackend;
+        }
+
+        if (backendType == "native") {
+            roomBackend_ = std::make_unique<NativeRoomBackend>(
+                *instanceWalker_, *routineInvoker_, pipe_.get(),
+                log_, events_,
+                registries_.npcs(), registries_.triggers(), diagnostics_);
+            log_.info("AREA", "Area backend: NativeRoomBackend");
+        } else {
+            roomBackend_ = std::make_unique<HijackedRoomBackend>(
+                *instanceWalker_, *routineInvoker_, pipe_.get(),
+                log_, events_,
+                registries_.npcs(), registries_.triggers(), diagnostics_);
+            log_.info("AREA", "Area backend: HijackedRoomBackend");
+        }
+    }
 
     // Register v1 hooks
     stepRegisterHooks();
@@ -176,9 +241,12 @@ void EflBootstrap::stepRegisterHooks() {
                           "Room grid setup may not work");
     }
 
-    // Frame callback for room tracking + trigger evaluation (MUST)
+    // Frame callback for room tracking + trigger evaluation + hot-reload drain (MUST)
     if (hooks_->registerFrameCallback("frame_update", [this]() {
                 roomTracker_->update();
+                hotReload_.drainQueue();
+                // TODO: pass real FoM time when time hook is wired (Phase 6+)
+                registries_.worldNpcs().tickSchedule(0);
             })) {
         log_.info("HOOK", "Registered: frame_update");
         emitBootStatus("hook.registered", "pass", "frame_update");
@@ -212,86 +280,11 @@ void EflBootstrap::stepConnectAreaRegistry() {
     roomTracker_->onRoomChange([this](const std::string& oldRoom, const std::string& newRoom) {
         log_.info("ROOM", "Room changed: " + oldRoom + " -> " + newRoom);
 
-        // Check if any registered area hijacks this room
+        // Check if any registered area maps to this room — delegate activation to the backend
         auto areas = registries_.areas().areasByHostRoom(newRoom);
         for (const auto* area : areas) {
-            log_.info("AREA", "Activating EFL area '" + area->id +
-                      "' in hijacked room: " + newRoom);
-
-            // 1. Destroy default instances that conflict with the hijacked area
-            try {
-                auto defaultInstances = instanceWalker_->getAll("obj_interactable");
-                for (auto* inst : defaultInstances) {
-                    routineInvoker_->callBuiltin("instance_destroy", {YYTK::RValue(inst)});
-                }
-                log_.info("AREA", "Cleared " + std::to_string(defaultInstances.size()) +
-                          " default instances in " + newRoom);
-            } catch (const std::exception& ex) {
-                log_.warn("AREA", "Failed to clear default instances: " + std::string(ex.what()));
-            }
-
-            // 2. Set music if specified
-            if (!area->music.empty()) {
-                try {
-                    YYTK::RValue musicAsset = routineInvoker_->callBuiltin("asset_get_index",
-                        {YYTK::RValue(area->music.c_str())});
-                    routineInvoker_->callBuiltin("audio_play_music", {musicAsset});
-                    log_.info("AREA", "Set music: " + area->music);
-                } catch (const std::exception& ex) {
-                    log_.warn("AREA", "Failed to set music '" + area->music + "': " + std::string(ex.what()));
-                }
-            }
-
-            // 3. Publish area.activated event
-            events_.publish("area.activated", nlohmann::json{
-                {"areaId", area->id}, {"hostRoom", newRoom}});
-
-            // 4. Emit IPC for TUI
-            if (pipe_) {
-                pipe_->write("area.activated", nlohmann::json{
-                    {"areaId", area->id}, {"hostRoom", newRoom}});
-            }
-
-            // 5. Spawn NPCs assigned to this area (Step 3)
-            auto npcs = registries_.npcs().npcsInArea(area->id);
-            for (const auto* npc : npcs) {
-                // Check unlock trigger — skip NPCs that aren't visible yet
-                if (!npc->unlockTrigger.empty() &&
-                    !registries_.triggers().evaluate(npc->unlockTrigger)) {
-                    log_.info("NPC", "NPC '" + npc->id + "' locked (trigger: " +
-                              npc->unlockTrigger + ")");
-                    continue;
-                }
-
-                // Parse spawn anchor "x,y" format
-                try {
-                    auto commaPos = npc->spawnAnchor.find(',');
-                    if (commaPos == std::string::npos) {
-                        log_.warn("NPC", "Invalid spawnAnchor for NPC '" + npc->id +
-                                  "': " + npc->spawnAnchor);
-                        continue;
-                    }
-                    double x = std::stod(npc->spawnAnchor.substr(0, commaPos));
-                    double y = std::stod(npc->spawnAnchor.substr(commaPos + 1));
-
-                    YYTK::RValue npcObj = routineInvoker_->callBuiltin("asset_get_index",
-                        {YYTK::RValue("par_NPC")});
-                    YYTK::RValue layerName(YYTK::RValue("Instances"));
-                    routineInvoker_->callBuiltin("instance_create_layer",
-                        {YYTK::RValue(x), YYTK::RValue(y), layerName, npcObj});
-
-                    log_.info("NPC", "Spawned NPC '" + npc->id + "' at (" +
-                              std::to_string(x) + ", " + std::to_string(y) + ")");
-
-                    if (pipe_) {
-                        pipe_->write("npc.spawned", nlohmann::json{
-                            {"npcId", npc->id}, {"areaId", area->id},
-                            {"x", x}, {"y", y}});
-                    }
-                } catch (const std::exception& ex) {
-                    log_.warn("NPC", "Failed to spawn NPC '" + npc->id + "': " +
-                              std::string(ex.what()));
-                }
+            if (roomBackend_) {
+                roomBackend_->activate(*area);
             }
         }
     });
@@ -325,13 +318,11 @@ void EflBootstrap::stepConnectWarpService() {
 
     // Gate room transitions via the room_transition hook.
     // When obj_roomtransition fires, check if the target room has warps that require triggers.
-    // If a warp's trigger isn't met, suppress the transition.
+    // If a warp's trigger isn't met, destroy the transition instance to suppress the transition.
     hooks_->registerScriptHook("warp_gate",
         "gml_Object_obj_roomtransition_Create_0",
         [this](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode*,
                int, YYTK::RValue*) {
-            // v1: observation only — logs locked warps but cannot suppress transitions.
-            // Suppression requires wiring CodeEventCallback returns through YYTK Event.Call().
             try {
                 YYTK::RValue targetVar = instanceWalker_->getVariable(self, "target_room");
                 YYTK::RValue nameVal = routineInvoker_->callBuiltin("room_get_name", {targetVar});
@@ -340,9 +331,15 @@ void EflBootstrap::stepConnectWarpService() {
                 auto warpsTo = registries_.warps().warpsTo(targetRoom);
                 for (const auto* warp : warpsTo) {
                     if (!registries_.warps().canWarp(warp->id, registries_.triggers())) {
-                        log_.warn("WARP", "Transition to " + targetRoom +
-                                  " blocked by trigger '" + warp->requireTrigger +
-                                  "' on warp '" + warp->id + "' (suppression not yet wired)");
+                        instanceWalker_->destroyInstance(self);
+                        diagnostics_.emit("WARP-W001", Severity::Warning, "WARP",
+                                          "Warp '" + warp->id + "' suppressed — trigger condition not met",
+                                          "Fulfill trigger '" + warp->requireTrigger + "' to unlock");
+                        if (pipe_) {
+                            pipe_->write("warp.suppressed", nlohmann::json{{"warpId", warp->id}});
+                        }
+                        log_.warn("WARP", "Warp '" + warp->id + "' suppressed — trigger '" +
+                                  warp->requireTrigger + "' not met");
                     }
                 }
             } catch (...) {
@@ -354,7 +351,9 @@ void EflBootstrap::stepConnectWarpService() {
 #endif // EFL_STUB_SDK
 
 void EflBootstrap::shutdown() {
+    hotReload_.stop();
 #ifndef EFL_STUB_SDK
+    roomBackend_.reset();
     hooks_.reset();
     roomTracker_.reset();
     routineInvoker_.reset();
@@ -408,28 +407,57 @@ bool EflBootstrap::stepDiscoverManifests(const std::string& contentDir) {
     }
 
     int found = 0;
-    // Each content pack lives in its own subdirectory with a manifest.efl inside.
-    // e.g. mods/efl/hello_adventurer/manifest.efl
     for (const auto& entry : fs::directory_iterator(contentDir)) {
-        if (!entry.is_directory())
-            continue;
+        if (entry.is_directory()) {
+            // Unpacked content pack: subdir containing manifest.efl
+            fs::path manifestPath = entry.path() / "manifest.efl";
+            if (!fs::exists(manifestPath))
+                continue;
 
-        fs::path manifestPath = entry.path() / "manifest.efl";
-        if (!fs::exists(manifestPath))
-            continue;
+            auto manifest = ManifestParser::parseFile(manifestPath.string());
+            if (manifest) {
+                manifest->packDir = entry.path().string();
+                log_.info("BOOT", "Loaded manifest: " + manifest->modId +
+                          " v" + manifest->version);
+                manifests_.push_back(std::move(*manifest));
+                ++found;
+            } else {
+                log_.error("BOOT", "Failed to parse manifest: " + manifestPath.string());
+                diagnostics_.emit("MANIFEST-E001", Severity::Error, "MANIFEST",
+                                  "Failed to parse manifest: " + manifestPath.filename().string(),
+                                  "Check JSON syntax and required fields");
+            }
+        } else if (entry.is_regular_file() &&
+                   entry.path().extension() == ".efpack") {
+            // Packed content: ZIP archive containing manifest.efl + content
+            auto tempDir = EfpackLoader::unpackToTemp(entry.path());
+            if (!tempDir) {
+                log_.error("BOOT", "Failed to load pack: " + entry.path().filename().string());
+                diagnostics_.emit("PACK-E001", Severity::Error, "PACK",
+                                  "Failed to load pack: " + entry.path().filename().string(),
+                                  "Ensure the file is a valid efpack archive with pack-meta.json");
+                continue;
+            }
 
-        auto manifest = ManifestParser::parseFile(manifestPath.string());
-        if (manifest) {
-            manifest->packDir = entry.path().string();
-            log_.info("BOOT", "Loaded manifest: " + manifest->modId +
-                      " v" + manifest->version);
-            manifests_.push_back(std::move(*manifest));
-            ++found;
-        } else {
-            log_.error("BOOT", "Failed to parse manifest: " + manifestPath.string());
-            diagnostics_.emit("MANIFEST-E001", Severity::Error, "MANIFEST",
-                              "Failed to parse manifest: " + manifestPath.filename().string(),
-                              "Check JSON syntax and required fields");
+            fs::path packedManifestPath = *tempDir / "manifest.efl";
+            if (!fs::exists(packedManifestPath))
+                continue;
+
+            auto manifest = ManifestParser::parseFile(packedManifestPath.string());
+            if (manifest) {
+                manifest->packDir = tempDir->string();
+                log_.info("BOOT", "Loaded packed manifest: " + manifest->modId +
+                          " v" + manifest->version);
+                manifests_.push_back(std::move(*manifest));
+                ++found;
+            } else {
+                log_.error("BOOT", "Failed to parse manifest in pack: " +
+                           entry.path().filename().string());
+                diagnostics_.emit("PACK-E002", Severity::Error, "PACK",
+                                  "Failed to parse manifest in pack: " +
+                                  entry.path().filename().string(),
+                                  "Check JSON syntax and required fields in manifest.efl");
+            }
         }
     }
 
@@ -604,6 +632,19 @@ void EflBootstrap::stepLoadContent(const std::string& contentDir) {
                                       "Check required fields: id, displayName");
                 }
             });
+
+            loadDir("world_npcs", [&](const nlohmann::json& j, const std::string& file) {
+                auto def = WorldNpcDef::fromJson(j);
+                if (def) {
+                    log_.info("BOOT", "Registered WorldNpc: " + def->id);
+                    registries_.worldNpcs().registerWorldNpc(std::move(*def));
+                } else {
+                    log_.error("BOOT", "Failed to parse WorldNpc: " + file);
+                    diagnostics_.emit("NPC-E001", Severity::Error, "NPC",
+                                      "Failed to parse WorldNpc definition: " + file,
+                                      "Check required fields: id, displayName");
+                }
+            });
         }
 
         // Crafting / recipes
@@ -656,6 +697,108 @@ void EflBootstrap::stepLoadContent(const std::string& contentDir) {
     }
 
     emitBootStatus("load_content", "pass");
+}
+
+void EflBootstrap::reloadContentType(const std::string& contentType,
+                                      const std::filesystem::path& filePath) {
+    if (filePath.extension() != ".json")
+        return;
+
+    std::ifstream reloadFile(filePath);
+    if (!reloadFile.is_open()) {
+        log_.warn("RELOAD", "Cannot open changed file: " + filePath.string());
+        return;
+    }
+
+    nlohmann::json j;
+    try {
+        reloadFile >> j;
+    } catch (const std::exception& ex) {
+        log_.error("RELOAD", "JSON parse error in " + filePath.string() + ": " + ex.what());
+        diagnostics_.emit("RELOAD-W001", Severity::Warning, "BOOT",
+                          "Hot-reload parse error: " + filePath.filename().string(),
+                          ex.what());
+        return;
+    }
+
+    const std::string fname = filePath.filename().string();
+
+    try {
+        if (contentType == "triggers") {
+            registries_.triggers().registerFromJson(j);
+            log_.info("RELOAD", "Reloaded trigger from " + fname);
+        } else if (contentType == "areas") {
+            auto def = AreaDef::fromJson(j);
+            if (def) {
+                registries_.areas().registerArea(*def);
+                log_.info("RELOAD", "Reloaded area: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse area: " + fname);
+            }
+        } else if (contentType == "warps") {
+            auto def = WarpDef::fromJson(j);
+            if (def) {
+                registries_.warps().registerWarp(*def);
+                log_.info("RELOAD", "Reloaded warp: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse warp: " + fname);
+            }
+        } else if (contentType == "resources") {
+            auto def = ResourceDef::fromJson(j);
+            if (def) {
+                registries_.resources().registerResource(*def);
+                log_.info("RELOAD", "Reloaded resource: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse resource: " + fname);
+            }
+        } else if (contentType == "quests") {
+            auto def = QuestDef::fromJson(j);
+            if (def) {
+                registries_.quests().registerQuest(*def);
+                log_.info("RELOAD", "Reloaded quest: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse quest: " + fname);
+            }
+        } else if (contentType == "npcs") {
+            auto def = NpcDef::fromJson(j);
+            if (def) {
+                registries_.npcs().registerNpc(*def);
+                log_.info("RELOAD", "Reloaded NPC: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse NPC: " + fname);
+            }
+        } else if (contentType == "recipes") {
+            auto def = RecipeDef::fromJson(j);
+            if (def) {
+                registries_.crafting().registerRecipe(*def);
+                log_.info("RELOAD", "Reloaded recipe: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse recipe: " + fname);
+            }
+        } else if (contentType == "dialogue") {
+            auto def = DialogueDef::fromJson(j);
+            if (def) {
+                registries_.dialogue().registerDialogue(*def);
+                log_.info("RELOAD", "Reloaded dialogue: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse dialogue: " + fname);
+            }
+        } else if (contentType == "events") {
+            auto def = EventDef::fromJson(j);
+            if (def) {
+                registries_.story().registerEvent(*def);
+                log_.info("RELOAD", "Reloaded event: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse event: " + fname);
+            }
+        } else {
+            log_.info("RELOAD", "Unknown content type '" + contentType + "' ignored");
+        }
+    } catch (const std::exception& ex) {
+        log_.error("RELOAD", "Error reloading " + contentType + "/" + fname + ": " + ex.what());
+        diagnostics_.emit("RELOAD-W001", Severity::Warning, "BOOT",
+                          "Hot-reload failed for: " + fname, ex.what());
+    }
 }
 
 void EflBootstrap::emitBootStatus(const std::string& step, const std::string& status,

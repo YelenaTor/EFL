@@ -30,8 +30,16 @@ FetchContent_Declare(
     GIT_TAG v1.15.2
 )
 
+FetchContent_Declare(
+    miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz.git
+    GIT_TAG 3.0.2
+)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(nlohmann_json json_schema_validator googletest)
+# Allow FetchContent to configure miniz's older CMakeLists.txt
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+FetchContent_MakeAvailable(nlohmann_json json_schema_validator googletest miniz)
 
 # EFL public headers
 include_directories(include)
@@ -53,6 +61,7 @@ target_include_directories(EFL PRIVATE
 target_link_libraries(EFL PRIVATE
     nlohmann_json::nlohmann_json
     nlohmann_json_schema_validator
+    miniz
 )
 
 target_compile_definitions(EFL PRIVATE

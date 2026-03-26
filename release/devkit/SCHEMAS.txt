@@ -33,6 +33,10 @@ EDITOR SETUP (VS Code)
            "url": "./schemas/npc.schema.json"
          },
          {
+           "fileMatch": ["*/world_npcs/*.json"],
+           "url": "./schemas/world-npc.schema.json"
+         },
+         {
            "fileMatch": ["*/dialogue/*.json"],
            "url": "./schemas/dialogue.schema.json"
          },
@@ -67,6 +71,7 @@ SCHEMA FILES
   area.schema.json          — areas/*.json
   warp.schema.json          — warps/*.json
   npc.schema.json           — npcs/*.json
+  world-npc.schema.json     — world_npcs/*.json
   dialogue.schema.json      — dialogue/*.json
   trigger.schema.json       — triggers/*.json
   quest.schema.json         — quests/*.json

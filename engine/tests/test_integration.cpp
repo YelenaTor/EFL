@@ -28,6 +28,9 @@ TEST(Integration, LoadContentPack) {
     // NPC loaded
     EXPECT_NE(reg.npcs().getNpc("flora_spirit"), nullptr);
 
+    // WorldNpc loaded
+    EXPECT_NE(reg.worldNpcs().getWorldNpc("forest_merchant"), nullptr);
+
     // Recipe loaded
     EXPECT_NE(reg.crafting().getRecipe("crystal_pickaxe"), nullptr);
 

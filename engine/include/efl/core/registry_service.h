@@ -7,6 +7,7 @@
 #include "efl/registries/resource_registry.h"
 #include "efl/registries/quest_registry.h"
 #include "efl/registries/npc_registry.h"
+#include "efl/registries/world_npc_registry.h"
 #include "efl/registries/crafting_registry.h"
 #include "efl/registries/dialogue_service.h"
 #include "efl/registries/story_bridge.h"
@@ -21,6 +22,7 @@ public:
     ResourceRegistry& resources() { return resources_; }
     QuestRegistry& quests() { return quests_; }
     NpcRegistry& npcs() { return npcs_; }
+    WorldNpcRegistry& worldNpcs() { return worldNpcs_; }
     CraftingRegistry& crafting() { return crafting_; }
     DialogueService& dialogue() { return dialogue_; }
     StoryBridge& story() { return story_; }
@@ -31,6 +33,7 @@ public:
     const ResourceRegistry& resources() const { return resources_; }
     const QuestRegistry& quests() const { return quests_; }
     const NpcRegistry& npcs() const { return npcs_; }
+    const WorldNpcRegistry& worldNpcs() const { return worldNpcs_; }
     const CraftingRegistry& crafting() const { return crafting_; }
     const DialogueService& dialogue() const { return dialogue_; }
     const StoryBridge& story() const { return story_; }
@@ -42,6 +45,7 @@ private:
     ResourceRegistry resources_;
     QuestRegistry quests_;
     NpcRegistry npcs_;
+    WorldNpcRegistry worldNpcs_;
     CraftingRegistry crafting_;
     DialogueService dialogue_;
     StoryBridge story_;

@@ -40,6 +40,10 @@ void InstanceWalker::setVariable(YYTK::InstanceId id, const std::string& varName
     yytk_->SetInstanceVariable(id, varName, value);
 }
 
+void InstanceWalker::destroyInstance(YYTK::InstanceId /*id*/) {
+    // Stub: no-op
+}
+
 #else // Real SDK
 
 // ── Real implementation ─────────────────────────────────────────────────────
@@ -113,6 +117,12 @@ void InstanceWalker::setVariable(YYTK::CInstance* instance, const std::string& v
     if (Aurie::AurieSuccess(yytk_->GetInstanceMember(instVal, varName.c_str(), member)) && member) {
         *member = value;
     }
+}
+
+void InstanceWalker::destroyInstance(YYTK::CInstance* inst) {
+    if (!yytk_ || !inst) return;
+    YYTK::RValue instVal = inst->ToRValue();
+    yytk_->CallBuiltin("instance_destroy", {instVal});
 }
 
 #endif // EFL_STUB_SDK

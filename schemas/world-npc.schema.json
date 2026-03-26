@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/world-npc.schema.json",
+  "title": "EFL WorldNpc Definition",
+  "description": "Schema for WorldNpc definitions — NPCs that exist globally and move on a time-of-day schedule",
+  "type": "object",
+  "required": ["id", "displayName"],
+  "properties": {
+    "id": { "type": "string" },
+    "displayName": { "type": "string" },
+    "portraitAsset": { "type": "string" },
+    "defaultAreaId": { "type": "string" },
+    "defaultAnchorId": { "type": "string" },
+    "unlockTrigger": { "type": "string" },
+    "schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timeFrom", "timeTo", "areaId", "anchorId"],
+        "properties": {
+          "timeFrom": {
+            "type": "integer",
+            "description": "Start of this schedule slot (0-2359 game time)",
+            "minimum": 0,
+            "maximum": 2359
+          },
+          "timeTo": {
+            "type": "integer",
+            "description": "End of this schedule slot (0-2359 game time)",
+            "minimum": 0,
+            "maximum": 2359
+          },
+          "areaId": {
+            "type": "string",
+            "description": "EFL area ID where the NPC should be during this slot"
+          },
+          "anchorId": {
+            "type": "string",
+            "description": "Spawn anchor within the area for this slot"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

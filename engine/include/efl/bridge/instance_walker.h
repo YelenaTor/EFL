@@ -22,6 +22,8 @@ public:
     YYTK::RValue getVariable(YYTK::InstanceId id, const std::string& varName);
     void setVariable(YYTK::InstanceId id, const std::string& varName, const YYTK::RValue& value);
 
+    void destroyInstance(YYTK::InstanceId id);
+
 private:
     YYTK::YYTKInterface* yytk_;
 };
@@ -49,6 +51,9 @@ public:
     // Access instance member variables.
     YYTK::RValue getVariable(YYTK::CInstance* instance, const std::string& varName);
     void setVariable(YYTK::CInstance* instance, const std::string& varName, YYTK::RValue value);
+
+    // Destroy a game instance — used to suppress transitions by destroying obj_roomtransition.
+    void destroyInstance(YYTK::CInstance* inst);
 
 private:
     YYTK::YYTKInterface* yytk_;

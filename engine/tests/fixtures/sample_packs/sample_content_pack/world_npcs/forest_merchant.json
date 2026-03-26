@@ -1,0 +1,11 @@
+{
+  "id": "forest_merchant",
+  "displayName": "Forest Merchant",
+  "portraitAsset": "spr_merchant",
+  "defaultAreaId": "crystal_cave",
+  "defaultAnchorId": "entrance",
+  "schedule": [
+    { "timeFrom": 800, "timeTo": 1200, "areaId": "crystal_cave", "anchorId": "entrance" },
+    { "timeFrom": 1300, "timeTo": 1800, "areaId": "crystal_cave", "anchorId": "market" }
+  ]
+}

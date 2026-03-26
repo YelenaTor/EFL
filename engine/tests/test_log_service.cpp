@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#include <filesystem>
+#include <fstream>
 #include "efl/core/log_service.h"
 
 TEST(LogService, InfoWritesToBuffer) {
@@ -28,4 +30,34 @@ TEST(LogService, BufferRespectsBound) {
     }
     auto entries = log.recent(100);
     EXPECT_EQ(entries.size(), 5);
+}
+
+TEST(LogService, FileOutputNotOpenByDefault) {
+    efl::LogService log;
+    EXPECT_FALSE(log.isFileOutputOpen());
+}
+
+TEST(LogService, SetFileOutputOpensFile) {
+    namespace fs = std::filesystem;
+    fs::path tmpDir = fs::temp_directory_path() / "efl_test_logs";
+    fs::create_directories(tmpDir);
+    std::string logPath = (tmpDir / "test_efl.log").string();
+
+    std::string content;
+    {
+        efl::LogService log;
+        EXPECT_FALSE(log.isFileOutputOpen());
+        log.setFileOutput(logPath);
+        EXPECT_TRUE(log.isFileOutputOpen());
+
+        log.info("TEST", "file output test");
+
+        std::ifstream f(logPath);
+        ASSERT_TRUE(f.is_open());
+        content = std::string((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+    } // log and f both close here, releasing file handles
+
+    EXPECT_NE(content.find("file output test"), std::string::npos);
+    fs::remove_all(tmpDir);
 }

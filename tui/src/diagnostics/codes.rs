@@ -15,6 +15,7 @@ pub enum Category {
     Story,
     Save,
     Ipc,
+    Pack,
 }
 
 impl Category {
@@ -33,6 +34,7 @@ impl Category {
             Category::Story => "STORY",
             Category::Save => "SAVE",
             Category::Ipc => "IPC",
+            Category::Pack => "PACK",
         }
     }
 
@@ -52,6 +54,7 @@ impl Category {
             "STORY" => Some(Category::Story),
             "SAVE" => Some(Category::Save),
             "IPC" => Some(Category::Ipc),
+            "PACK" => Some(Category::Pack),
             _ => None,
         }
     }

@@ -67,4 +67,9 @@ void LogService::setFileOutput(const std::string& path) {
     fileOut_.open(path, std::ios::app);
 }
 
+bool LogService::isFileOutputOpen() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return fileOut_.is_open();
+}
+
 } // namespace efl

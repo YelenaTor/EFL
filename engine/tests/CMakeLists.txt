@@ -4,6 +4,7 @@ target_link_libraries(efl_tests PRIVATE
     GTest::gtest_main
     nlohmann_json::nlohmann_json
     nlohmann_json_schema_validator
+    miniz
 )
 target_include_directories(efl_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
