@@ -16,3 +16,9 @@ TEST(CompatibilityService, OlderEflFailsNewerRequirement) {
 TEST(CompatibilityService, MajorVersionMismatch) {
     EXPECT_FALSE(efl::CompatibilityService::isCompatible("2.0.0", "1.0.0"));
 }
+
+// In EFL_STUB_SDK builds (no live Aurie runtime), all external deps are absent.
+TEST(CompatibilityService, ExternalModAbsentInStubMode) {
+    EXPECT_FALSE(efl::CompatibilityService::isExternalModLoaded("fields-together"));
+    EXPECT_FALSE(efl::CompatibilityService::isExternalModLoaded("any-mod-id"));
+}

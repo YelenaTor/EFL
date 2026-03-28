@@ -638,6 +638,27 @@ bool EflBootstrap::stepValidateManifests() {
                               "Update EFL or use a compatible mod version");
             allOk = false;
         }
+
+        for (const auto& dep : m.requiredDeps) {
+            if (!CompatibilityService::isExternalModLoaded(dep.modId)) {
+                log_.error("BOOT", "Mod '" + m.modId + "' requires '" + dep.modId +
+                           "' which is not loaded");
+                diagnostics_.emit("MANIFEST-E003", Severity::Error, "MANIFEST",
+                                  "Required dependency '" + dep.modId + "' not loaded for mod '" + m.modId + "'",
+                                  "Install '" + dep.modId + "' via MOMI before loading this pack");
+                allOk = false;
+            }
+        }
+
+        for (const auto& dep : m.optionalDeps) {
+            if (!CompatibilityService::isExternalModLoaded(dep.modId)) {
+                log_.warn("BOOT", "Optional dependency '" + dep.modId +
+                          "' not loaded for mod '" + m.modId + "' — related features disabled");
+                diagnostics_.emit("MANIFEST-W001", Severity::Warning, "MANIFEST",
+                                  "Optional dependency '" + dep.modId + "' not loaded for mod '" + m.modId + "'",
+                                  "Install '" + dep.modId + "' to enable related features");
+            }
+        }
     }
 
     if (allOk) {

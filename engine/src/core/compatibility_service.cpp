@@ -1,5 +1,9 @@
 #include "efl/core/compatibility_service.h"
 
+#ifndef EFL_STUB_SDK
+#include <Aurie/shared.hpp>
+#endif
+
 #include <sstream>
 
 namespace efl {
@@ -31,6 +35,19 @@ bool CompatibilityService::isCompatible(const std::string& runningVersion,
         return false;
 
     return running.patch >= required.patch;
+}
+
+bool CompatibilityService::isExternalModLoaded(const std::string& modId) {
+#ifndef EFL_STUB_SDK
+    // Convention: mods that want to be discoverable as EFL dependencies must call
+    //   Aurie::ObCreateInterface(module, &myInterface, modId.c_str())
+    // at init time. EFL checks for that interface by name.
+    return Aurie::ObInterfaceExists(modId.c_str());
+#else
+    // In stub/test mode there is no game runtime — treat all external deps as absent.
+    (void)modId;
+    return false;
+#endif
 }
 
 } // namespace efl
