@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include "efl/core/bootstrap.h"
 #include "efl/core/registry_service.h"
 #include "efl/core/diagnostics.h"
@@ -67,4 +68,38 @@ TEST(Integration, MissingContentDirIsNonFatal) {
     // Missing directory is a warning, not a fatal error
     EXPECT_TRUE(ok);
     EXPECT_EQ(bootstrap.diagnostics().countBySeverity(efl::Severity::Error), 0);
+}
+
+TEST(Integration, ScriptHookInjectModeEmitsW002) {
+    efl::EflBootstrap bootstrap;
+    bootstrap.initialize("fixtures/script_hook_packs");
+
+    const auto& diags = bootstrap.diagnostics().all();
+    bool hasW002 = std::any_of(diags.begin(), diags.end(),
+        [](const efl::DiagnosticEntry& e) { return e.code == "HOOK-W002"; });
+    EXPECT_TRUE(hasW002) << "Expected HOOK-W002 for inject-mode script hook";
+}
+
+TEST(Integration, ScriptHookUnknownHandlerEmitsW004) {
+    efl::EflBootstrap bootstrap;
+    bootstrap.initialize("fixtures/script_hook_packs");
+
+    const auto& diags = bootstrap.diagnostics().all();
+    bool hasW004 = std::any_of(diags.begin(), diags.end(),
+        [](const efl::DiagnosticEntry& e) { return e.code == "HOOK-W004"; });
+    EXPECT_TRUE(hasW004) << "Expected HOOK-W004 for unknown handler name";
+}
+
+TEST(Integration, ScriptHookManifestParsed) {
+    efl::EflBootstrap bootstrap;
+    bootstrap.initialize("fixtures/script_hook_packs");
+
+    ASSERT_FALSE(bootstrap.manifests().empty());
+    const auto& hooks = bootstrap.manifests()[0].scriptHooks;
+    ASSERT_EQ(hooks.size(), 3u);
+    EXPECT_EQ(hooks[0].target,  "gml_Script_hoe_node");
+    EXPECT_EQ(hooks[0].handler, "efl_resource_despawn");
+    EXPECT_EQ(hooks[0].mode,    "callback");
+    EXPECT_EQ(hooks[1].mode,    "inject");
+    EXPECT_EQ(hooks[2].handler, "efl_nonexistent_handler");
 }

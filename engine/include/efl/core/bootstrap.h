@@ -87,6 +87,7 @@ private:
     bool stepDiscoverManifests(const std::string& contentDir);
     bool stepValidateManifests();
     void stepLoadContent(const std::string& contentDir);
+    void stepValidateScriptHooks();
     void reloadContentType(const std::string& contentType,
                            const std::filesystem::path& filePath);
     void emitBootStatus(const std::string& step, const std::string& status,

@@ -1,22 +1,22 @@
 #pragma once
 #include <filesystem>
 #include <optional>
-#include <string>
 
 namespace efl {
 
 class EfpackLoader {
 public:
-    // Extracts efpack to %TEMP%/efl-packs/<stem>-<first8ofHash>/
-    // Returns the temp directory path, or nullopt on failure
-    static std::optional<std::filesystem::path> unpackToTemp(
-        const std::filesystem::path& efpackPath);
+    // Extracts efpack to loadedRoot/<modId>/.
+    // Reads manifest.efl from the archive to determine modId.
+    // If the target directory already exists, reuses it without re-extracting.
+    // Returns the extracted directory path, or nullopt on failure.
+    static std::optional<std::filesystem::path> unpackToLoadedDir(
+        const std::filesystem::path& efpackPath,
+        const std::filesystem::path& loadedRoot);
 
-    // Returns the manifestHash stored in pack-meta.json, or empty string if not found
-    static std::string readPackedHash(const std::filesystem::path& efpackPath);
-
-    // Returns the manifestHash stored in pack-meta.json inside the already-extracted temp dir
-    static std::string readExtractedHash(const std::filesystem::path& tempDir);
+    // Renames my_mod.efpack → my_mod.efpack.loaded as a skip marker.
+    // Returns true on success.
+    static bool markAsLoaded(const std::filesystem::path& efpackPath);
 };
 
 } // namespace efl

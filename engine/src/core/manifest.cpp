@@ -142,6 +142,17 @@ std::optional<Manifest> ManifestParser::parseJson(const nlohmann::json& j) {
         }
     }
 
+    // Script hooks (v2.2)
+    if (j.contains("scriptHooks") && j["scriptHooks"].is_array()) {
+        for (const auto& sh : j["scriptHooks"]) {
+            ManifestScriptHook hook;
+            if (sh.contains("target"))  hook.target  = sh["target"].get<std::string>();
+            if (sh.contains("handler")) hook.handler = sh["handler"].get<std::string>();
+            if (sh.contains("mode"))    hook.mode    = sh["mode"].get<std::string>();
+            m.scriptHooks.push_back(std::move(hook));
+        }
+    }
+
     return m;
 }
 

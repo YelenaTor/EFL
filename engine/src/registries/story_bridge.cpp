@@ -1,5 +1,6 @@
 #include "efl/registries/story_bridge.h"
 #include "efl/core/trigger_service.h"
+#include "efl/ipc/pipe_writer.h"
 
 namespace efl {
 
@@ -63,6 +64,27 @@ bool StoryBridge::canFire(const std::string& eventId, const TriggerService& trig
 
 const std::vector<EventDef>& StoryBridge::allEvents() const {
     return events_;
+}
+
+void StoryBridge::setPipeWriter(PipeWriter* pipe) {
+    pipe_ = pipe;
+}
+
+void StoryBridge::fireEvent(const std::string& eventId, const TriggerService& triggers) {
+    if (!canFire(eventId, triggers))
+        return;
+
+    // Emit IPC so the TUI monitor shows the fired event.
+    if (pipe_) {
+        pipe_->write("story.fired", nlohmann::json{
+            {"eventId", eventId},
+            {"status", "stub"}
+        });
+    }
+
+    // TODO(v2.3+): call RoutineInvoker::invoke("gml_Script_story_start", {eventId})
+    // once the FoM script name is confirmed via discover_scripts.py output.
+    // Until then the event is acknowledged by EFL but not fired in the game engine.
 }
 
 } // namespace efl

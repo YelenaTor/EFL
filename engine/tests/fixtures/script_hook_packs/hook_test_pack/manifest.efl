@@ -1,0 +1,25 @@
+{
+    "schemaVersion": 1,
+    "modId": "com.test.scripthooktest",
+    "name": "Script Hook Test Pack",
+    "version": "1.0.0",
+    "eflVersion": "1.0.0",
+    "features": {
+        "resources": true
+    },
+    "scriptHooks": [
+        {
+            "target": "gml_Script_hoe_node",
+            "handler": "efl_resource_despawn"
+        },
+        {
+            "target": "gml_Script_some_effect",
+            "handler": "efl_resource_despawn",
+            "mode": "inject"
+        },
+        {
+            "target": "gml_Script_other_script",
+            "handler": "efl_nonexistent_handler"
+        }
+    ]
+}

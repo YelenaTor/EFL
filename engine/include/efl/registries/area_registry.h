@@ -20,6 +20,8 @@ struct AreaDef {
     std::string music;
     std::string entryAnchor;
     std::string unlockTrigger; // trigger ID that gates access (empty = always accessible)
+    std::string entryEvent;   // EventDef id to fire on area entry (empty = none)
+    std::string exitEvent;    // EventDef id to fire on area exit  (empty = none)
 
     static std::optional<AreaDef> fromJson(const nlohmann::json& j);
 };

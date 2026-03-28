@@ -58,6 +58,19 @@
         "areaBackend": { "type": "string" },
         "saveScope": { "type": "string" }
       }
+    },
+    "scriptHooks": {
+      "type": "array",
+      "description": "Script hooks declared by this mod (v2.2). Default mode is 'callback' (built-in EFL handler). Use mode 'inject' to opt into future GML injection support.",
+      "items": {
+        "type": "object",
+        "required": ["target", "handler"],
+        "properties": {
+          "target":  { "type": "string", "description": "GML script name to hook, e.g. gml_Script_hoe_node" },
+          "handler": { "type": "string", "description": "Built-in EFL handler name, e.g. efl_resource_despawn" },
+          "mode":    { "type": "string", "enum": ["callback", "inject"], "default": "callback" }
+        }
+      }
     }
   }
 }

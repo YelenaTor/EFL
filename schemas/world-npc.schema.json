@@ -12,6 +12,17 @@
     "defaultAreaId": { "type": "string" },
     "defaultAnchorId": { "type": "string" },
     "unlockTrigger": { "type": "string" },
+    "giftableItems": {
+      "type": "array",
+      "description": "Item ids accepted as gifts by this NPC",
+      "items": { "type": "string" }
+    },
+    "heartsPerGift": {
+      "type": "integer",
+      "description": "Hearts awarded per valid gift (default 1)",
+      "minimum": 0,
+      "default": 1
+    },
     "schedule": {
       "type": "array",
       "items": {

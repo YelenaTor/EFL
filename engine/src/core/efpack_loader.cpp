@@ -3,10 +3,6 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 #ifndef EFL_STUB_SDK
 #include <miniz.h>
 #endif
@@ -15,39 +11,15 @@ namespace efl {
 
 namespace {
 
-std::filesystem::path systemTempDir() {
-#ifdef _WIN32
-    char buf[MAX_PATH + 1] = {};
-    DWORD len = GetTempPathA(static_cast<DWORD>(sizeof(buf)), buf);
-    if (len > 0 && len < sizeof(buf))
-        return std::filesystem::path(buf);
-#endif
-    return std::filesystem::temp_directory_path();
-}
-
-std::string readHashFromDir(const std::filesystem::path& dir) {
-    std::filesystem::path metaPath = dir / "pack-meta.json";
-    std::ifstream f(metaPath);
-    if (!f.is_open())
-        return {};
-    try {
-        nlohmann::json j;
-        f >> j;
-        if (j.contains("manifestHash") && j["manifestHash"].is_string())
-            return j["manifestHash"].get<std::string>();
-    } catch (...) {}
-    return {};
-}
-
-} // anonymous namespace
-
-std::string EfpackLoader::readPackedHash(const std::filesystem::path& efpackPath) {
 #ifndef EFL_STUB_SDK
+
+// Read manifest.efl from inside a ZIP archive and return the modId field.
+std::string readModIdFromArchive(const std::filesystem::path& efpackPath) {
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_file(&zip, efpackPath.string().c_str(), 0))
         return {};
 
-    int idx = mz_zip_reader_locate_file(&zip, "pack-meta.json", nullptr, 0);
+    int idx = mz_zip_reader_locate_file(&zip, "manifest.efl", nullptr, 0);
     if (idx < 0) {
         mz_zip_reader_end(&zip);
         return {};
@@ -64,85 +36,112 @@ std::string EfpackLoader::readPackedHash(const std::filesystem::path& efpackPath
 
     try {
         nlohmann::json j = nlohmann::json::parse(raw);
-        if (j.contains("manifestHash") && j["manifestHash"].is_string())
-            return j["manifestHash"].get<std::string>();
+        if (j.contains("modId") && j["modId"].is_string())
+            return j["modId"].get<std::string>();
     } catch (...) {}
     return {};
-#else
-    (void)efpackPath;
-    return {};
-#endif
 }
 
-std::string EfpackLoader::readExtractedHash(const std::filesystem::path& tempDir) {
-    return readHashFromDir(tempDir);
+// Sanitize an archived path to prevent traversal attacks.
+// Returns an empty path if the entry is unsafe.
+std::filesystem::path sanitizeArchivePath(const char* archiveName) {
+    std::filesystem::path p = std::filesystem::path(archiveName).lexically_normal();
+
+    // Reject absolute paths and paths that escape via ..
+    if (p.is_absolute())
+        return {};
+    for (const auto& part : p) {
+        if (part == "..")
+            return {};
+    }
+    return p;
 }
 
-std::optional<std::filesystem::path> EfpackLoader::unpackToTemp(
-        const std::filesystem::path& efpackPath) {
-#ifdef EFL_STUB_SDK
-    (void)efpackPath;
-    return std::nullopt;
-#else
-    std::string hash = readPackedHash(efpackPath);
-    if (hash.empty())
-        return std::nullopt;
-
-    std::string first8 = hash.size() >= 8 ? hash.substr(0, 8) : hash;
-    std::string stem   = efpackPath.stem().string();
-
-    std::filesystem::path tempDir =
-        systemTempDir() / "efl-packs" / (stem + "-" + first8);
-
-    // Cache hit: reuse existing extraction if the hash still matches.
-    if (std::filesystem::exists(tempDir) && readExtractedHash(tempDir) == hash)
-        return tempDir;
-
+// Extract all files from a ZIP archive into destDir.
+// Returns false if any file fails or has an unsafe path.
+bool extractArchive(const std::filesystem::path& efpackPath,
+                    const std::filesystem::path& destDir) {
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_file(&zip, efpackPath.string().c_str(), 0))
-        return std::nullopt;
-
-    std::error_code ec;
-    std::filesystem::create_directories(tempDir, ec);
-    if (ec) {
-        mz_zip_reader_end(&zip);
-        return std::nullopt;
-    }
+        return false;
 
     mz_uint numFiles = mz_zip_reader_get_num_files(&zip);
+    std::error_code ec;
+
     for (mz_uint i = 0; i < numFiles; ++i) {
         mz_zip_archive_file_stat stat{};
         if (!mz_zip_reader_file_stat(&zip, i, &stat)) {
             mz_zip_reader_end(&zip);
-            return std::nullopt;
+            return false;
         }
 
-        std::filesystem::path destPath = tempDir / stat.m_filename;
+        std::filesystem::path rel = sanitizeArchivePath(stat.m_filename);
+        if (rel.empty())
+            continue; // skip unsafe entries silently
+
+        std::filesystem::path dest = destDir / rel;
 
         if (mz_zip_reader_is_file_a_directory(&zip, i)) {
-            std::filesystem::create_directories(destPath, ec);
-            if (ec) {
-                mz_zip_reader_end(&zip);
-                return std::nullopt;
-            }
+            std::filesystem::create_directories(dest, ec);
+            if (ec) { mz_zip_reader_end(&zip); return false; }
             continue;
         }
 
-        std::filesystem::create_directories(destPath.parent_path(), ec);
-        if (ec) {
-            mz_zip_reader_end(&zip);
-            return std::nullopt;
-        }
+        std::filesystem::create_directories(dest.parent_path(), ec);
+        if (ec) { mz_zip_reader_end(&zip); return false; }
 
-        if (!mz_zip_reader_extract_to_file(&zip, i, destPath.string().c_str(), 0)) {
+        if (!mz_zip_reader_extract_to_file(&zip, i, dest.string().c_str(), 0)) {
             mz_zip_reader_end(&zip);
-            return std::nullopt;
+            return false;
         }
     }
 
     mz_zip_reader_end(&zip);
-    return tempDir;
+    return true;
+}
+
+#endif // !EFL_STUB_SDK
+
+} // anonymous namespace
+
+std::optional<std::filesystem::path> EfpackLoader::unpackToLoadedDir(
+        const std::filesystem::path& efpackPath,
+        const std::filesystem::path& loadedRoot) {
+#ifdef EFL_STUB_SDK
+    (void)efpackPath;
+    (void)loadedRoot;
+    return std::nullopt;
+#else
+    std::string modId = readModIdFromArchive(efpackPath);
+    if (modId.empty())
+        return std::nullopt;
+
+    std::filesystem::path targetDir = loadedRoot / modId;
+
+    // If already extracted from a previous boot (or failed rename), reuse it.
+    if (std::filesystem::exists(targetDir))
+        return targetDir;
+
+    std::error_code ec;
+    std::filesystem::create_directories(targetDir, ec);
+    if (ec)
+        return std::nullopt;
+
+    if (!extractArchive(efpackPath, targetDir)) {
+        // Clean up partial extraction so next boot retries.
+        std::filesystem::remove_all(targetDir, ec);
+        return std::nullopt;
+    }
+
+    return targetDir;
 #endif
+}
+
+bool EfpackLoader::markAsLoaded(const std::filesystem::path& efpackPath) {
+    std::filesystem::path loadedPath(efpackPath.string() + ".loaded");
+    std::error_code ec;
+    std::filesystem::rename(efpackPath, loadedPath, ec);
+    return !ec;
 }
 
 } // namespace efl

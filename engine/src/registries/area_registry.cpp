@@ -20,6 +20,8 @@ std::optional<AreaDef> AreaDef::fromJson(const nlohmann::json& j) {
     if (j.contains("music"))         def.music         = j.at("music").get<std::string>();
     if (j.contains("entryAnchor"))   def.entryAnchor   = j.at("entryAnchor").get<std::string>();
     if (j.contains("unlockTrigger")) def.unlockTrigger = j.at("unlockTrigger").get<std::string>();
+    if (j.contains("entryEvent"))    def.entryEvent    = j.at("entryEvent").get<std::string>();
+    if (j.contains("exitEvent"))     def.exitEvent     = j.at("exitEvent").get<std::string>();
 
     return def;
 }

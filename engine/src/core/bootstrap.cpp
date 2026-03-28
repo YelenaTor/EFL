@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <thread>
+#include <unordered_set>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -75,6 +76,8 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     diagnostics_.setPipeWriter(pipe_.get());
     events_.setPipeWriter(pipe_.get());
     saves_.setPipeWriter(pipe_.get());
+    registries_.story().setPipeWriter(pipe_.get());
+    registries_.worldNpcs().setSaveService(&saves_);
 
     contentDir_ = contentDir;
     log_.info("BOOT", "EFL v" + eflVersionString() + " initializing");
@@ -118,6 +121,22 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     if (pipe_) {
         pipe_->write("phase.transition", nlohmann::json{
             {"phase", "boot"}, {"status", "complete"}});
+    }
+
+    // Load per-mod config from <contentDir>/config.json (silent no-op if missing)
+    config_.loadFromFile((std::filesystem::path(contentDir) / "config.json").string());
+
+    // Validate script hooks declared in all manifests (emits W002/W003 in both SDK modes)
+    stepValidateScriptHooks();
+
+    // Emit CRAFT-H001 if any pack declares crafting (station hooks pending script name discovery)
+    for (const auto& m : manifests_) {
+        if (m.features.crafting) {
+            diagnostics_.emit("CRAFT-H001", Severity::Hazard, "CRAFT",
+                              "Crafting station hooks not yet wired — script name TBD",
+                              "Run discover_crafting.py to confirm the FoM crafting station script name");
+            break;
+        }
     }
 
     emitBootStatus("init", "complete",
@@ -273,18 +292,60 @@ void EflBootstrap::stepRegisterHooks() {
                               "Resource interactions may not be intercepted");
         }
     }
+
+    // Manifest-declared script hook callbacks (v2.2 — callback mode only)
+    static const std::unordered_set<std::string> kBuiltinHandlers = {
+        "efl_resource_despawn",
+    };
+    for (const auto& manifest : manifests_) {
+        for (const auto& sh : manifest.scriptHooks) {
+            if (sh.mode == "inject" ||
+                kBuiltinHandlers.find(sh.handler) == kBuiltinHandlers.end())
+                continue; // already diagnosed in stepValidateScriptHooks
+
+            std::string hookName = sh.handler + ":" + sh.target;
+            hooks_->registerScriptHook(hookName, sh.target,
+                [this, sh](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
+                            int, YYTK::RValue*) {
+                    log_.info("HOOK", "Script hook fired: " + sh.handler + " @ " + sh.target);
+                    // v2.4: real resource spawn/despawn logic wired here
+                    diagnostics_.emit("RESOURCE-H001", Severity::Hazard, "RESOURCE",
+                                     "efl_resource_despawn stub — not yet implemented",
+                                     "Resource spawning is wired in v2.4");
+                });
+            log_.info("HOOK", "Registered manifest hook: " + sh.target + " -> " + sh.handler);
+        }
+    }
 }
 
 void EflBootstrap::stepConnectAreaRegistry() {
-    // When room changes, check if the new room is hijacked by an EFL area.
+    // When room changes, deactivate old EFL areas and activate new ones.
     roomTracker_->onRoomChange([this](const std::string& oldRoom, const std::string& newRoom) {
         log_.info("ROOM", "Room changed: " + oldRoom + " -> " + newRoom);
 
-        // Check if any registered area maps to this room — delegate activation to the backend
-        auto areas = registries_.areas().areasByHostRoom(newRoom);
-        for (const auto* area : areas) {
-            if (roomBackend_) {
+        // Deactivate areas in the old room and fire their exit events.
+        auto oldAreas = registries_.areas().areasByHostRoom(oldRoom);
+        for (const auto* area : oldAreas) {
+            if (roomBackend_)
+                roomBackend_->deactivate();
+            if (!area->exitEvent.empty())
+                registries_.story().fireEvent(area->exitEvent, registries_.triggers());
+        }
+
+        // Activate areas in the new room and fire their entry events.
+        auto newAreas = registries_.areas().areasByHostRoom(newRoom);
+        for (const auto* area : newAreas) {
+            if (roomBackend_)
                 roomBackend_->activate(*area);
+            if (!area->entryEvent.empty())
+                registries_.story().fireEvent(area->entryEvent, registries_.triggers());
+
+            // Spawn resource nodes for this area (v2.4 stub — real call needs FoM script name)
+            auto resources = registries_.resources().resourcesInArea(area->id);
+            for (const auto* res : resources) {
+                log_.info("RESOURCE", "Resource spawn stub: " + res->id + " in area " + area->id);
+                // TODO(v2.4): RoutineInvoker::invoke("gml_Script_spawn_resource_node", {res->id})
+                // Confirm script name via discover_resources.py output first.
             }
         }
     });
@@ -429,27 +490,33 @@ bool EflBootstrap::stepDiscoverManifests(const std::string& contentDir) {
             }
         } else if (entry.is_regular_file() &&
                    entry.path().extension() == ".efpack") {
-            // Packed content: ZIP archive containing manifest.efl + content
-            auto tempDir = EfpackLoader::unpackToTemp(entry.path());
-            if (!tempDir) {
+            // Packed content: ZIP archive — extract to loaded_efpack/<modId>/ then mark done.
+            fs::path loadedRoot = fs::path(contentDir) / "loaded_efpack";
+            auto extractedDir = EfpackLoader::unpackToLoadedDir(entry.path(), loadedRoot);
+            if (!extractedDir) {
                 log_.error("BOOT", "Failed to load pack: " + entry.path().filename().string());
                 diagnostics_.emit("PACK-E001", Severity::Error, "PACK",
                                   "Failed to load pack: " + entry.path().filename().string(),
-                                  "Ensure the file is a valid efpack archive with pack-meta.json");
+                                  "Ensure the file is a valid efpack archive with a manifest.efl");
                 continue;
             }
 
-            fs::path packedManifestPath = *tempDir / "manifest.efl";
+            fs::path packedManifestPath = *extractedDir / "manifest.efl";
             if (!fs::exists(packedManifestPath))
                 continue;
 
             auto manifest = ManifestParser::parseFile(packedManifestPath.string());
             if (manifest) {
-                manifest->packDir = tempDir->string();
+                manifest->packDir = extractedDir->string();
                 log_.info("BOOT", "Loaded packed manifest: " + manifest->modId +
                           " v" + manifest->version);
                 manifests_.push_back(std::move(*manifest));
                 ++found;
+                // Rename .efpack → .efpack.loaded so it is skipped on next boot.
+                if (!EfpackLoader::markAsLoaded(entry.path())) {
+                    log_.warn("BOOT", "Could not mark pack as loaded: " +
+                              entry.path().filename().string());
+                }
             } else {
                 log_.error("BOOT", "Failed to parse manifest in pack: " +
                            entry.path().filename().string());
@@ -791,6 +858,14 @@ void EflBootstrap::reloadContentType(const std::string& contentType,
             } else {
                 log_.warn("RELOAD", "Failed to parse event: " + fname);
             }
+        } else if (contentType == "world_npcs") {
+            auto def = WorldNpcDef::fromJson(j);
+            if (def) {
+                registries_.worldNpcs().registerWorldNpc(*def);
+                log_.info("RELOAD", "Reloaded world NPC: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse world NPC: " + fname);
+            }
         } else {
             log_.info("RELOAD", "Unknown content type '" + contentType + "' ignored");
         }
@@ -798,6 +873,28 @@ void EflBootstrap::reloadContentType(const std::string& contentType,
         log_.error("RELOAD", "Error reloading " + contentType + "/" + fname + ": " + ex.what());
         diagnostics_.emit("RELOAD-W001", Severity::Warning, "BOOT",
                           "Hot-reload failed for: " + fname, ex.what());
+    }
+}
+
+void EflBootstrap::stepValidateScriptHooks() {
+    static const std::unordered_set<std::string> kBuiltinHandlers = {
+        "efl_resource_despawn",
+    };
+
+    for (const auto& manifest : manifests_) {
+        for (const auto& sh : manifest.scriptHooks) {
+            if (sh.mode == "inject") {
+                diagnostics_.emit("HOOK-W002", Severity::Warning, "HOOK",
+                                  "GML injection not yet available: hook skipped (" + sh.target + ")",
+                                  "Remove mode:\"inject\" or wait for EFL GML injection support");
+                log_.warn("HOOK", "Script hook skipped (inject mode not yet supported): " + sh.target);
+            } else if (kBuiltinHandlers.find(sh.handler) == kBuiltinHandlers.end()) {
+                diagnostics_.emit("HOOK-W004", Severity::Warning, "HOOK",
+                                  "Unknown script hook handler: " + sh.handler,
+                                  "Check handler name against EFL built-in handlers list");
+                log_.warn("HOOK", "Unknown manifest hook handler: " + sh.handler);
+            }
+        }
     }
 }
 

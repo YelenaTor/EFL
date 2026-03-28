@@ -16,6 +16,8 @@
     "spawnTable": { "type": "string" },
     "entryAnchor": { "type": "string" },
     "unlockTrigger": { "type": "string" },
-    "saveNamespace": { "type": "string" }
+    "saveNamespace": { "type": "string" },
+    "entryEvent": { "type": "string", "description": "EventDef id to fire when the player enters this area" },
+    "exitEvent":  { "type": "string", "description": "EventDef id to fire when the player leaves this area" }
   }
 }

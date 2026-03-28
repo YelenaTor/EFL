@@ -33,6 +33,12 @@ struct ManifestDependency {
     std::string versionRange;
 };
 
+struct ManifestScriptHook {
+    std::string target;            // GML script name, e.g. "gml_Script_hoe_node"
+    std::string handler;           // Built-in EFL handler name, e.g. "efl_resource_despawn"
+    std::string mode = "callback"; // "callback" (default) or "inject" (future, stubs with HOOK-W002)
+};
+
 struct Manifest {
     int schemaVersion = 1;
     std::string modId;
@@ -43,6 +49,7 @@ struct Manifest {
     std::vector<ManifestDependency> optionalDeps;
     ManifestFeatures features;
     ManifestSettings settings;
+    std::vector<ManifestScriptHook> scriptHooks;
     std::string packDir; // absolute path to the directory containing this manifest
 };
 

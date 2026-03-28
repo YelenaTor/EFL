@@ -1,4 +1,6 @@
 #include "efl/registries/world_npc_registry.h"
+#include "efl/core/save_service.h"
+#include <algorithm>
 
 namespace efl {
 
@@ -14,6 +16,11 @@ std::optional<WorldNpcDef> WorldNpcDef::fromJson(const nlohmann::json& j) {
     if (j.contains("defaultAreaId"))   def.defaultAreaId   = j.at("defaultAreaId").get<std::string>();
     if (j.contains("defaultAnchorId")) def.defaultAnchorId = j.at("defaultAnchorId").get<std::string>();
     if (j.contains("unlockTrigger"))   def.unlockTrigger   = j.at("unlockTrigger").get<std::string>();
+    if (j.contains("heartsPerGift"))   def.heartsPerGift   = j.at("heartsPerGift").get<int>();
+    if (j.contains("giftableItems") && j.at("giftableItems").is_array()) {
+        for (const auto& item : j.at("giftableItems"))
+            def.giftableItems.push_back(item.get<std::string>());
+    }
 
     if (j.contains("schedule") && j.at("schedule").is_array()) {
         for (const auto& item : j.at("schedule")) {
@@ -73,6 +80,40 @@ const std::vector<WorldNpcDef>& WorldNpcRegistry::allWorldNpcs() const {
 void WorldNpcRegistry::tickSchedule(int /*currentTimeOfDay*/) {
     // TODO: teleport WorldNpcs to their scheduled anchor when FoM time hook is wired.
     // For now this is a stub — actual instance movement requires YYTK hooks in Layer B.
+}
+
+void WorldNpcRegistry::setSaveService(SaveService* saves) {
+    saves_ = saves;
+}
+
+int WorldNpcRegistry::getHearts(const std::string& modId, const std::string& npcId) const {
+    if (!saves_) return 0;
+    auto val = saves_->get(modId, "npc", npcId + "/hearts");
+    if (val && val->is_number_integer())
+        return val->get<int>();
+    return 0;
+}
+
+void WorldNpcRegistry::addHearts(const std::string& modId, const std::string& npcId, int delta) {
+    if (!saves_) return;
+    int current = getHearts(modId, npcId);
+    int next = std::clamp(current + delta, 0, 10);
+    saves_->set(modId, "npc", npcId + "/hearts", next);
+}
+
+void WorldNpcRegistry::recordGift(const std::string& modId, const std::string& npcId,
+                                   const std::string& /*itemId*/, const std::string& date) {
+    if (!saves_) return;
+    saves_->set(modId, "npc", npcId + "/lastGiftDate", date);
+}
+
+bool WorldNpcRegistry::wasGiftedToday(const std::string& modId, const std::string& npcId,
+                                       const std::string& today) const {
+    if (!saves_) return false;
+    auto val = saves_->get(modId, "npc", npcId + "/lastGiftDate");
+    if (val && val->is_string())
+        return val->get<std::string>() == today;
+    return false;
 }
 
 } // namespace efl
