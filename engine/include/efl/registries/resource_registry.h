@@ -15,6 +15,7 @@ struct YieldEntry {
 
 struct SpawnRules {
     std::vector<std::string> areas;
+    std::unordered_map<std::string, std::pair<int,int>> anchors; // area_id -> {grid_x, grid_y}
     std::string respawnPolicy;
     std::vector<std::string> seasonal;
 };

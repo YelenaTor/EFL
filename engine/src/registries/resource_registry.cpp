@@ -1,4 +1,5 @@
 #include "efl/registries/resource_registry.h"
+#include <algorithm>
 
 namespace efl {
 
@@ -29,6 +30,23 @@ std::optional<ResourceDef> ResourceDef::fromJson(const nlohmann::json& j) {
         const auto& sr = j.at("spawnRules");
         if (sr.contains("areas")) {
             def.spawnRules.areas = sr.at("areas").get<std::vector<std::string>>();
+        }
+        if (sr.contains("anchors")) {
+            for (auto& [areaId, val] : sr.at("anchors").items()) {
+                std::string xy = val.get<std::string>();
+                auto comma = xy.find(',');
+                if (comma != std::string::npos) {
+                    int gx = std::stoi(xy.substr(0, comma));
+                    int gy = std::stoi(xy.substr(comma + 1));
+                    def.spawnRules.anchors[areaId] = {gx, gy};
+                    // Also ensure the area is in the areas list
+                    if (std::find(def.spawnRules.areas.begin(),
+                                  def.spawnRules.areas.end(), areaId)
+                        == def.spawnRules.areas.end()) {
+                        def.spawnRules.areas.push_back(areaId);
+                    }
+                }
+            }
         }
         if (sr.contains("respawnPolicy")) {
             def.spawnRules.respawnPolicy = sr.at("respawnPolicy").get<std::string>();

@@ -365,12 +365,35 @@ void EflBootstrap::stepConnectAreaRegistry() {
             if (!area->entryEvent.empty())
                 registries_.story().fireEvent(area->entryEvent, registries_.triggers());
 
-            // Spawn resource nodes for this area (v2.4 stub — real call needs FoM script name)
+            // Spawn resource nodes for this area.
+            // Script: gml_Script_attempt_to_write_object_node (safe wrapper, SCPT 3251).
+            // Args: (kind: string, grid_x: int, grid_y: int) — best-guess from static analysis.
+            // RUNTIME_VERIFY: hook write_rock_to_location to confirm argc/arg types if spawn fails.
             auto resources = registries_.resources().resourcesInArea(area->id);
             for (const auto* res : resources) {
-                log_.info("RESOURCE", "Resource spawn stub: " + res->id + " in area " + area->id);
-                // TODO(v2.4): RoutineInvoker::invoke("gml_Script_spawn_resource_node", {res->id})
-                // Confirm script name via discover_resources.py output first.
+                auto it = res->spawnRules.anchors.find(area->id);
+                if (it == res->spawnRules.anchors.end()) {
+                    log_.warn("RESOURCE", "No anchor for " + res->id + " in area " + area->id
+                              + " — skipping spawn (add spawnRules.anchors in resource JSON)");
+                    continue;
+                }
+                const auto [gx, gy] = it->second;
+#ifndef EFL_STUB_SDK
+                try {
+                    routineInvoker_->callGameScript(
+                        "gml_Script_attempt_to_write_object_node",
+                        {YYTK::RValue(res->kind.c_str()),
+                         YYTK::RValue(static_cast<double>(gx)),
+                         YYTK::RValue(static_cast<double>(gy))});
+                    log_.info("RESOURCE", "Spawned " + res->id + " at (" +
+                              std::to_string(gx) + "," + std::to_string(gy) + ")");
+                } catch (const std::exception& ex) {
+                    log_.warn("RESOURCE", "Spawn failed for " + res->id + ": " + ex.what());
+                }
+#else
+                log_.info("RESOURCE", "Stub: would spawn " + res->id + " at (" +
+                          std::to_string(gx) + "," + std::to_string(gy) + ") in " + area->id);
+#endif
             }
         }
     });
