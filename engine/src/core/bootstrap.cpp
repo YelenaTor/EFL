@@ -309,8 +309,9 @@ void EflBootstrap::stepRegisterHooks() {
         }
     }
 
-    // Crafting station hook — inject EFL recipes when any crafting menu opens (v2.4)
-    // gml_Script_spawn_crafting_menu confirmed in data.win.
+    // Crafting station hook — inject EFL recipes when any crafting menu opens.
+    // gml_Script_spawn_crafting_menu confirmed via EFL_Probe (index 1635, SCPT 3251).
+    //   Args: (menu_struct, x: real, y: real, station_id: real)
     // gml_Script_unlock_recipe@Ari@Ari confirmed in data.win.
     // Station-specific filtering (recipesAtStation) deferred until recipe_context enum
     // strings are confirmed via Ghidra — injects all trigger-unlocked EFL recipes for now.
@@ -345,9 +346,11 @@ void EflBootstrap::stepRegisterHooks() {
     }
 
     // Dungeon vote injection — add EFL nodes to FoM biome vote pools (v2.4+)
-    // gml_Script_create_node_prototypes fires once per room on grid init.
-    // RUNTIME_VERIFY: inspect prototype struct after creation to find the vote
-    // table mutation API. Candidate: gml_Script_register_node@Anchor@Anchor.
+    // gml_Script_create_node_prototypes fires once per room on grid init (confirmed).
+    // Vote-table mutation API: gml_Script_register_node@Anchor@Anchor (confirmed).
+    // Arg: single GML struct. Struct field layout requires further probing before
+    // callGameScript can be used — a dedicated probe session is needed to inspect
+    // the struct that FoM's own node types pass in.
     if (!registries_.resources().resourcesWithDungeonVotes().empty()) {
         if (hooks_->registerScriptHook(
                 "efl_dungeon_vote_inject", "gml_Script_create_node_prototypes",
@@ -357,14 +360,14 @@ void EflBootstrap::stepRegisterHooks() {
                     for (const auto* res : candidates) {
                         for (const auto& vote : res->spawnRules.dungeonVotes) {
 #ifndef EFL_STUB_SDK
-                            // TODO: call runtime vote-table mutation once API confirmed
+                            // TODO(RESOURCE-H002): call register_node@Anchor@Anchor once
+                            // struct arg layout is confirmed. Script name is verified;
+                            // struct fields (kind, biome, pool, weight) need probe output.
                             // e.g. routineInvoker_->callGameScript(
                             //     "gml_Script_register_node@Anchor@Anchor",
-                            //     {res->kind, vote.biome, vote.pool, vote.weight});
-                            diagnostics_.emit("RESOURCE-H002", Severity::Hazard, "RESOURCE",
-                                "Dungeon vote stub: " + res->id + " not injected into "
-                                + vote.biome + "/" + vote.pool,
-                                "Hook runtime vote API once confirmed");
+                            //     { <node_prototype_struct> });
+                            log_.warn("RESOURCE", "Dungeon vote pending struct probe: "
+                                + res->id + " -> " + vote.biome + "/" + vote.pool);
 #else
                             log_.info("RESOURCE", "Stub: dungeon vote for " + res->id
                                       + " biome=" + vote.biome
@@ -407,9 +410,17 @@ void EflBootstrap::stepConnectAreaRegistry() {
                 registries_.story().fireEvent(area->entryEvent, registries_.triggers());
 
             // Spawn resource nodes for this area.
-            // Script: gml_Script_attempt_to_write_object_node (safe wrapper, SCPT 3251).
-            // Args: (kind: string, grid_x: int, grid_y: int) — best-guess from static analysis.
-            // RUNTIME_VERIFY: hook write_rock_to_location to confirm argc/arg types if spawn fails.
+            // Script: gml_Script_attempt_to_write_object_node (SCPT 3251, confirmed).
+            // Confirmed args (from EFL_Probe.dll capture):
+            //   [0] = node_prototype_struct  (GML struct — layout TBD, see RESOURCE-H003)
+            //   [1] = grid_x (real)
+            //   [2] = grid_y (real)
+            //   [3],[4] = structs (likely Grid instance + spawn config)
+            //   [5..8] = flags (override, force, etc.)
+            // Simpler alternative: gml_Script_write_node@Grid@Grid(x, y, node_type_id)
+            //   where node_type_id is the integer asset index — requires mapping kind→ID.
+            // TODO(RESOURCE-H003): replace placeholder call with correct struct args once
+            // node_prototype_struct layout is confirmed via a follow-up probe session.
             auto resources = registries_.resources().resourcesInArea(area->id);
             for (const auto* res : resources) {
                 auto it = res->spawnRules.anchors.find(area->id);
@@ -421,6 +432,8 @@ void EflBootstrap::stepConnectAreaRegistry() {
                 const auto [gx, gy] = it->second;
 #ifndef EFL_STUB_SDK
                 try {
+                    // Placeholder: passes kind as string for arg[0] until struct layout
+                    // is confirmed. Will likely fail or spawn nothing; logs the attempt.
                     routineInvoker_->callGameScript(
                         "gml_Script_attempt_to_write_object_node",
                         {YYTK::RValue(res->kind.c_str()),

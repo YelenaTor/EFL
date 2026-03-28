@@ -1,52 +1,53 @@
-// EFL Runtime Probe — dev-only Aurie module
-// Resolves the 3 RUNTIME_VERIFY stubs in EFL by hooking live FoM calls and
-// writing a structured log to <game>/EFL/probe_output.txt.
+// EFL Runtime Probe v2 — YYC-compatible Aurie module
 //
-// DO NOT load this DLL alongside EFL.dll — they compete on the same hooks.
-// Build, load solo with Aurie, trigger the relevant in-game actions, quit.
+// FoM uses the YoYo Compiler (YYC). Scripts are native C++ functions; YYTK's
+// EVENT_OBJECT_CALL (Code_Execute hook) never fires for them. This version
+// uses two strategies that DO work for YYC:
+//
+//   Phase 1 — Discovery scan: iterate GetScriptData(0..N) and log every
+//             script whose name contains a probe keyword. This tells us
+//             the REAL FoM names regardless of what we guessed.
+//
+//   Phase 2 — Live hooks: for each candidate whose name resolves via
+//             GetNamedRoutinePointer, patch its native function pointer
+//             with MmCreateHook. When the script fires, we log its args.
 //
 // ── Actions to perform — all reachable from a fresh new game ──────────────
-//  Probe 1 (node prototypes): Start a new game. create_node_prototypes fires
-//                             on Farm entry (day 1). The probe then captures
-//                             ALL scripts fired in the next 200 frames to
-//                             identify the vote-table mutation API.
-//  Probe 2 (surface spawn):   Same Farm entry — write_node fires as nodes
-//                             are placed on the grid.
-//  Probe 3 (crafting):        Open any crafting station. The Forge/Carpentry
-//                             bench is accessible in town without progression.
+//  Probe 1+2 (nodes/spawn): Start new game, enter Farm (day 1)
+//  Probe 3   (crafting):    Open any crafting station in town
 // ──────────────────────────────────────────────────────────────────────────
+//
+// DO NOT load alongside EFL.dll — they compete on the same hooks.
 
 #include <Aurie/shared.hpp>
 #include <YYToolkit/YYTK_Shared.hpp>
 
-#include <fstream>
-#include <string>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-#include <filesystem>
-#include <unordered_map>
-#include <functional>
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <mutex>
+#include <sstream>
+#include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
 // ── Globals ────────────────────────────────────────────────────────────────
 
-static YYTK::YYTKInterface* g_yytk     = nullptr;
-static std::ofstream        g_logFile;
-static std::mutex           g_logMux;
-static fs::path             g_logPath;
+static YYTK::YYTKInterface*  g_yytk  = nullptr;
+static Aurie::AurieModule*   g_mod   = nullptr;
+static std::ofstream         g_log;
+static std::mutex            g_logMux;
 
-// hook target name → callback (for dispatch in CodeEventHandler)
-static std::unordered_map<std::string,
-    std::function<void(YYTK::CInstance*, YYTK::CInstance*,
-                       YYTK::CCode*, int, YYTK::RValue*)>> g_hooks;
-
-// Temporal capture: when > 0 log ALL script calls (countdown in events)
-static std::atomic<int> g_captureFramesLeft{0};
-static constexpr int    CAPTURE_WINDOW = 200; // ~3 seconds at 60fps
+// Keywords that identify probe-relevant scripts during the discovery scan
+static const std::vector<std::string> KEYWORDS = {
+    "node", "craft", "recipe", "spawn", "register", "anchor",
+    "prototype", "station", "forge", "biome", "vote", "resource",
+    "write", "place", "grid"
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,15 @@ static std::string timestamp() {
     return ss.str();
 }
 
+static void plog(const std::string& tag, const std::string& msg) {
+    std::lock_guard<std::mutex> lk(g_logMux);
+    if (g_log.is_open()) {
+        g_log << '[' << timestamp() << "] [" << tag << "] " << msg << '\n';
+        g_log.flush();
+    }
+}
+
+// PFUNC_YYGMLScript passes args as RValue*[] (array of pointers), not RValue[].
 static std::string rvalStr(const YYTK::RValue& rv) {
     switch (rv.m_Kind) {
         case YYTK::VALUE_REAL:      return std::to_string(rv.m_Real);
@@ -74,164 +84,161 @@ static std::string rvalStr(const YYTK::RValue& rv) {
     }
 }
 
-static void plog(const std::string& probe, const std::string& msg) {
-    std::lock_guard<std::mutex> lk(g_logMux);
-    if (g_logFile.is_open()) {
-        g_logFile << '[' << timestamp() << "] [" << probe << "] " << msg << '\n';
-        g_logFile.flush();
-    }
-}
-
-static void plogArgs(const std::string& probe, const std::string& scriptName,
-                     int argc, YYTK::RValue* args) {
+static void plogArgs(const std::string& tag, const std::string& name,
+                     int argc, YYTK::RValue* args[]) {
     std::ostringstream ss;
-    ss << scriptName << '(';
-    for (int i = 0; i < argc; ++i) {
+    ss << name << '(';
+    for (int i = 0; i < argc && i < 10; ++i) {
         if (i) ss << ", ";
-        ss << '[' << i << "]=" << rvalStr(args[i]);
+        ss << '[' << i << "]=";
+        if (args[i]) ss << rvalStr(*args[i]);
+        else         ss << "<null>";
     }
+    if (argc > 10) ss << " ...+" << (argc - 10) << " more";
     ss << ')';
-    plog(probe, ss.str());
+    plog(tag, ss.str());
 }
 
-// ── YYTK CODE callback ─────────────────────────────────────────────────────
+// ── YYC script hook trampolines ────────────────────────────────────────────
+//
+// Each script hook has:
+//   - A trampoline pointer (filled by MmCreateHook, used to call original)
+//   - A static hook function with PFUNC_YYGMLScript signature
 
-static bool CodeEventHandler(YYTK::FWCodeEvent& Event) {
-    auto& evArgs = Event.Arguments();
-    YYTK::CCode* code = std::get<2>(evArgs);
-    if (!code) return false;
+// PFUNC_YYGMLScript = RValue& (*)(CInstance*, CInstance*, RValue&, int, RValue*[])
 
-    const char* rawName = code->GetName();
-    if (!rawName) return false;
-
-    std::string scriptName(rawName);
-
-    // Registered hooks — always dispatch
-    auto it = g_hooks.find(scriptName);
-    if (it != g_hooks.end()) {
-        it->second(
-            std::get<0>(evArgs),
-            std::get<1>(evArgs),
-            code,
-            std::get<3>(evArgs),
-            std::get<4>(evArgs)
-        );
+#define DEFINE_HOOK(NICK, LABEL, EXTRA)                                       \
+    static YYTK::PFUNC_YYGMLScript g_orig_##NICK = nullptr;                  \
+    static YYTK::RValue& Hook_##NICK(                                         \
+            YYTK::CInstance* s, YYTK::CInstance* o,                           \
+            YYTK::RValue& r, int argc, YYTK::RValue* args[]) {                \
+        plog(LABEL, "FIRED: " #NICK);                                         \
+        plogArgs(LABEL, #NICK, argc, args);                                   \
+        EXTRA                                                                  \
+        return g_orig_##NICK(s, o, r, argc, args);                            \
     }
 
-    // Temporal capture — log everything fired within CAPTURE_WINDOW events
-    // after create_node_prototypes, to identify the vote-table mutation API
-    // regardless of its name.
-    int remaining = g_captureFramesLeft.load();
-    if (remaining > 0) {
-        // Only log gml_Script_* entries to avoid flooding with object events
-        if (scriptName.rfind("gml_Script_", 0) == 0) {
-            plogArgs("CAPTURE", scriptName,
-                     std::get<3>(evArgs), std::get<4>(evArgs));
+DEFINE_HOOK(create_node_prototypes, "PROBE1",
+    plog("PROBE1", ">>> This IS the node-prototype script. Check discovery log for");
+    plog("PROBE1", "    any *register*/*vote*/*anchor* script that fires AFTER this.");
+)
+
+DEFINE_HOOK(register_node, "PROBE1",
+    plog("PROBE1", "CONFIRMED vote-table mutation API — use this for RESOURCE-H002");
+)
+
+DEFINE_HOOK(write_node, "PROBE2", )
+
+DEFINE_HOOK(attempt_to_write_object_node, "PROBE2",
+    plog("PROBE2", "CONFIRMED surface spawn API — use in HijackedRoomBackend");
+)
+
+DEFINE_HOOK(spawn_crafting_menu, "PROBE3",
+    plog("PROBE3", "CONFIRMED: spawn_crafting_menu — use for CRAFT-H001");
+)
+
+DEFINE_HOOK(open_crafting_station, "PROBE3",
+    plog("PROBE3", "CONFIRMED: open_crafting_station — use for CRAFT-H001");
+)
+
+DEFINE_HOOK(initialize_crafting, "PROBE3",
+    plog("PROBE3", "CONFIRMED: initialize_crafting — use for CRAFT-H001");
+)
+
+DEFINE_HOOK(start_crafting_session, "PROBE3",
+    plog("PROBE3", "CONFIRMED: start_crafting_session — use for CRAFT-H001");
+)
+
+// ── Hook installation ──────────────────────────────────────────────────────
+
+struct HookDef {
+    const char*              scriptName;
+    YYTK::PFUNC_YYGMLScript  hookFn;
+    YYTK::PFUNC_YYGMLScript* trampolineDst;
+};
+
+static void installHook(const HookDef& hd) {
+    PVOID rawPtr = nullptr;
+    auto s = g_yytk->GetNamedRoutinePointer(hd.scriptName, &rawPtr);
+    if (!Aurie::AurieSuccess(s) || !rawPtr) {
+        plog("HOOK", std::string("NOT FOUND: ") + hd.scriptName);
+        return;
+    }
+
+    auto* cs = reinterpret_cast<YYTK::CScript*>(rawPtr);
+    if (!cs->m_Functions || !cs->m_Functions->m_ScriptFunction) {
+        plog("HOOK", std::string("NO FUNCTION PTR: ") + hd.scriptName);
+        return;
+    }
+
+    PVOID trampRaw = nullptr;
+    auto hs = Aurie::MmCreateHook(
+        g_mod,
+        hd.scriptName,
+        reinterpret_cast<PVOID>(cs->m_Functions->m_ScriptFunction),
+        reinterpret_cast<PVOID>(hd.hookFn),
+        &trampRaw
+    );
+
+    if (!Aurie::AurieSuccess(hs)) {
+        plog("HOOK", std::string("HOOK FAILED (") + std::to_string(hs) + "): " + hd.scriptName);
+        return;
+    }
+
+    *hd.trampolineDst = reinterpret_cast<YYTK::PFUNC_YYGMLScript>(trampRaw);
+    plog("HOOK", std::string("HOOKED: ") + hd.scriptName);
+}
+
+// ── Phase 1 — Discovery scan ───────────────────────────────────────────────
+//
+// Iterates GetScriptData(0..N) and logs every script name matching a keyword.
+// This runs at ModuleInitialize time (before the game creates any objects),
+// so it's safe to call from the main thread during late-init.
+// Result: a dictionary of all FoM scripts with probe-relevant names.
+
+static void runDiscoveryScan() {
+    plog("DISCOVER", "=== Scanning FoM script table for probe keywords ===");
+    int found = 0;
+    int consecMiss = 0;
+
+    for (int i = 0; i < 20000 && consecMiss < 500; ++i) {
+        YYTK::CScript* cs = nullptr;
+        auto s = g_yytk->GetScriptData(i, cs);
+
+        if (!Aurie::AurieSuccess(s)) {
+            ++consecMiss;
+            continue;
         }
-        g_captureFramesLeft.fetch_sub(1);
-        if (g_captureFramesLeft.load() == 0) {
-            plog("CAPTURE", "--- capture window closed ---");
-            plog("CAPTURE", "Look above for scripts called after create_node_prototypes.");
-            plog("CAPTURE", "Candidate lines: any gml_Script_*node* or *register* or *anchor*");
+        consecMiss = 0;
+        if (!cs) continue;
+
+        // Prefer CCode name (bytecode path, may be null in YYC), fall back to
+        // YYGMLFuncs name.
+        const char* name = nullptr;
+        if (cs->m_Code)      name = cs->m_Code->GetName();
+        if (!name && cs->m_Functions) name = cs->m_Functions->m_Name;
+        if (!name) continue;
+
+        std::string sname(name);
+        if (sname.rfind("gml_Script_", 0) != 0) continue; // only user scripts
+
+        std::string lower = sname;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        for (const auto& kw : KEYWORDS) {
+            if (lower.find(kw) != std::string::npos) {
+                plog("DISCOVER", "[" + std::to_string(i) + "] " + sname);
+                ++found;
+                break;
+            }
         }
     }
 
-    return false;
-}
-
-// ── Hook registration ──────────────────────────────────────────────────────
-
-static bool g_codeCallbackRegistered = false;
-
-static bool registerHook(
-    Aurie::AurieModule* module,
-    const std::string& scriptName,
-    std::function<void(YYTK::CInstance*, YYTK::CInstance*,
-                       YYTK::CCode*, int, YYTK::RValue*)> callback)
-{
-    if (!g_codeCallbackRegistered && g_yytk && module) {
-        auto status = g_yytk->CreateCallback(
-            module,
-            YYTK::EVENT_OBJECT_CALL,
-            reinterpret_cast<void*>(&CodeEventHandler),
-            0
-        );
-        if (Aurie::AurieSuccess(status)) {
-            g_codeCallbackRegistered = true;
-            plog("INIT", "YYTK code callback registered");
-        } else {
-            plog("INIT", "ERROR: failed to register YYTK code callback");
-            return false;
-        }
+    plog("DISCOVER", "Scan complete. Keyword-matching scripts found: " + std::to_string(found));
+    if (found == 0) {
+        plog("DISCOVER", "WARNING: zero matches — m_Code may be null in YYC mode.");
+        plog("DISCOVER", "Check HOOK lines below; if GetNamedRoutinePointer hits, hooks work.");
     }
-    g_hooks[scriptName] = std::move(callback);
-    plog("INIT", "Watching: " + scriptName);
-    return true;
-}
-
-// ── Probe 1 — node prototype creation + vote-table mutation ────────────────
-//
-// create_node_prototypes fires on ANY area entry that has resource nodes —
-// including the Farm on day 1 of a new game. No dungeon access required.
-//
-// When it fires, we open a 200-event capture window that logs every
-// gml_Script_* call immediately following, which will include the vote-table
-// mutation call (whatever its real name is).
-//
-// We also directly watch register_node@Anchor@Anchor as the leading candidate.
-// If it appears in the capture log, that's your answer. If not, look for any
-// *node* / *register* / *anchor* script in the capture window.
-
-static void on_create_node_prototypes(YYTK::CInstance*, YYTK::CInstance*,
-                                      YYTK::CCode*, int argc, YYTK::RValue* args) {
-    plog("PROBE1-NODES", ">>> create_node_prototypes fired");
-    plogArgs("PROBE1-NODES", "create_node_prototypes", argc, args);
-    plog("PROBE1-NODES", "Opening " + std::to_string(CAPTURE_WINDOW) +
-                         "-event capture window...");
-    g_captureFramesLeft.store(CAPTURE_WINDOW);
-}
-
-static void on_register_node(YYTK::CInstance*, YYTK::CInstance*,
-                             YYTK::CCode*, int argc, YYTK::RValue* args) {
-    plog("PROBE1-NODES", "DIRECT HIT: register_node@Anchor@Anchor called");
-    plogArgs("PROBE1-NODES", "register_node@Anchor@Anchor", argc, args);
-    plog("PROBE1-NODES", "  => arg layout confirmed: (node_type, biome, pool, weight)");
-    plog("PROBE1-NODES", "  => REPLACE RESOURCE-H002 stub with this call");
-}
-
-// ── Probe 2 — surface node spawn script ────────────────────────────────────
-//
-// write_node@Grid@Grid is confirmed to exist. attempt_to_write_object_node
-// is the candidate for what EFL should call to place nodes.
-// Both will fire on Farm entry (day 1). No progression needed.
-//
-// If attempt_to_write_object_node fires: that IS the EFL spawn call.
-// If it doesn't: look for any *write*/*spawn*/*node* in the CAPTURE log.
-
-static void on_write_node(YYTK::CInstance*, YYTK::CInstance*,
-                          YYTK::CCode*, int argc, YYTK::RValue* args) {
-    plog("PROBE2-SURFACE", "write_node@Grid@Grid");
-    plogArgs("PROBE2-SURFACE", "write_node@Grid@Grid", argc, args);
-}
-
-static void on_attempt_write(YYTK::CInstance*, YYTK::CInstance*,
-                             YYTK::CCode*, int argc, YYTK::RValue* args) {
-    plog("PROBE2-SURFACE", "CONFIRMED: attempt_to_write_object_node");
-    plogArgs("PROBE2-SURFACE", "attempt_to_write_object_node", argc, args);
-    plog("PROBE2-SURFACE", "  => USE THIS in HijackedRoomBackend.cpp");
-    plog("PROBE2-SURFACE", "  => arg layout: (node_type_string, grid_x, grid_y)");
-}
-
-// ── Probe 3 — crafting station open script ─────────────────────────────────
-//
-// 4 candidates watched. Whichever fires first when you open a station wins.
-// Town has a crafting bench accessible from day 1 — no progression needed.
-
-static void on_craft_candidate(const std::string& name, int argc, YYTK::RValue* args) {
-    plog("PROBE3-CRAFTING", "CONFIRMED: " + name);
-    plogArgs("PROBE3-CRAFTING", name, argc, args);
-    plog("PROBE3-CRAFTING", "  => USE THIS as the hook target in bootstrap.cpp");
-    plog("PROBE3-CRAFTING", "  => REPLACE CRAFT-H001 stub with real recipe injection");
 }
 
 // ── Module entry / unload ──────────────────────────────────────────────────
@@ -240,10 +247,12 @@ EXPORTED Aurie::AurieStatus ModuleInitialize(
     IN Aurie::AurieModule* Module,
     IN const Aurie::fs::path& ModulePath
 ) {
+    g_mod = Module;
+
     auto logDir = ModulePath.parent_path().parent_path() / "EFL";
     fs::create_directories(logDir);
-    g_logPath = logDir / "probe_output.txt";
-    g_logFile.open(g_logPath, std::ios::out | std::ios::trunc);
+    auto logPath = logDir / "probe_output.txt";
+    g_log.open(logPath, std::ios::out | std::ios::trunc);
 
     auto status = Aurie::ObGetInterface(
         "YYTK_Main",
@@ -252,40 +261,49 @@ EXPORTED Aurie::AurieStatus ModuleInitialize(
     if (!Aurie::AurieSuccess(status) || !g_yytk)
         return Aurie::AURIE_MODULE_DEPENDENCY_NOT_RESOLVED;
 
-    plog("INIT", "=== EFL Runtime Probe loaded ===");
-    plog("INIT", "Output: " + g_logPath.string());
-    plog("INIT", "All probes work from a fresh new game:");
-    plog("INIT", "  [1+2] Start game, enter Farm — fires immediately on day 1");
+    plog("INIT", "=== EFL Runtime Probe v2 (YYC-compatible) ===");
+    plog("INIT", "Output: " + logPath.string());
+
+    // Phase 1: enumerate script table → log matching names
+    runDiscoveryScan();
+
+    // Phase 2: hook each candidate by exact name
+    plog("HOOK", "=== Hook registration (exact name lookup) ===");
+
+    const std::vector<HookDef> hooks = {
+        // Probe 1 — node prototype creation + vote-table mutation
+        {"gml_Script_create_node_prototypes",
+            Hook_create_node_prototypes, &g_orig_create_node_prototypes},
+        {"gml_Script_register_node@Anchor@Anchor",
+            Hook_register_node, &g_orig_register_node},
+
+        // Probe 2 — surface node spawn
+        {"gml_Script_write_node@Grid@Grid",
+            Hook_write_node, &g_orig_write_node},
+        {"gml_Script_attempt_to_write_object_node",
+            Hook_attempt_to_write_object_node, &g_orig_attempt_to_write_object_node},
+
+        // Probe 3 — crafting station open (4 candidates)
+        {"gml_Script_spawn_crafting_menu",
+            Hook_spawn_crafting_menu, &g_orig_spawn_crafting_menu},
+        {"gml_Script_open_crafting_station",
+            Hook_open_crafting_station, &g_orig_open_crafting_station},
+        {"gml_Script_initialize_crafting@CraftingStation@CraftingStation",
+            Hook_initialize_crafting, &g_orig_initialize_crafting},
+        {"gml_Script_start_crafting_session",
+            Hook_start_crafting_session, &g_orig_start_crafting_session},
+    };
+
+    int hookedCount = 0;
+    for (const auto& h : hooks) installHook(h);
+
+    plog("INIT", "");
+    plog("INIT", "Probe ready. Perform in-game actions:");
+    plog("INIT", "  [1+2] Start new game → enter Farm (day 1)");
     plog("INIT", "  [3]   Open a crafting station in town");
+    plog("INIT", "Then quit and check this log.");
     plog("INIT", "");
 
-    // Probe 1 — node prototypes + temporal capture for vote API
-    registerHook(Module, "gml_Script_create_node_prototypes",
-                 on_create_node_prototypes);
-    registerHook(Module, "gml_Script_register_node@Anchor@Anchor",
-                 on_register_node);
-
-    // Probe 2 — surface spawn
-    registerHook(Module, "gml_Script_write_node@Grid@Grid",
-                 on_write_node);
-    registerHook(Module, "gml_Script_attempt_to_write_object_node",
-                 on_attempt_write);
-
-    // Probe 3 — crafting (4 candidates)
-    for (const auto& name : std::vector<std::string>{
-            "gml_Script_spawn_crafting_menu",
-            "gml_Script_open_crafting_station",
-            "gml_Script_initialize_crafting@CraftingStation@CraftingStation",
-            "gml_Script_start_crafting_session"}) {
-        registerHook(Module, name,
-            [name](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
-                   int argc, YYTK::RValue* args) {
-                on_craft_candidate(name, argc, args);
-            });
-    }
-
-    plog("INIT", "Watching " + std::to_string(g_hooks.size()) + " targets + temporal capture.");
-    plog("INIT", "");
     return Aurie::AURIE_SUCCESS;
 }
 
@@ -293,12 +311,8 @@ EXPORTED Aurie::AurieStatus ModuleUnload(
     IN Aurie::AurieModule* Module,
     IN const Aurie::fs::path& ModulePath
 ) {
-    if (g_yytk && Module && g_codeCallbackRegistered)
-        g_yytk->RemoveCallback(Module, reinterpret_cast<void*>(&CodeEventHandler));
-    g_hooks.clear();
-
-    plog("INIT", "");
+    // MmCreateHook detours are automatically removed by Aurie when the module unloads.
     plog("INIT", "=== EFL Runtime Probe unloaded ===");
-    if (g_logFile.is_open()) g_logFile.close();
+    if (g_log.is_open()) g_log.close();
     return Aurie::AURIE_SUCCESS;
 }

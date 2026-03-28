@@ -88,13 +88,16 @@ private:
     YYTK::YYTKInterface* yytk_;
     efl::PipeWriter* pipe_ = nullptr;
 
-    enum class HookKind { Script, Frame, Detour };
+    // Script: dispatched via EVENT_OBJECT_CALL (VM-mode games only).
+    // YycScript: dispatched via MmCreateHook shim (YYC-mode games, e.g. FoM).
+    enum class HookKind { Script, YycScript, Frame, Detour };
 
     struct HookEntry {
         HookKind kind;
         std::string target;
         CodeEventCallback scriptCb;
         FrameCallback frameCb;
+        int yycSlotIndex = -1; // slot in g_yycSlots; only valid for YycScript
     };
 
     std::unordered_map<std::string, HookEntry> hooks_;
