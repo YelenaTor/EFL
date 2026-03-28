@@ -129,16 +129,6 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     // Validate script hooks declared in all manifests (emits W002/W003 in both SDK modes)
     stepValidateScriptHooks();
 
-    // Emit CRAFT-H001 if any pack declares crafting (station hooks pending script name discovery)
-    for (const auto& m : manifests_) {
-        if (m.features.crafting) {
-            diagnostics_.emit("CRAFT-H001", Severity::Hazard, "CRAFT",
-                              "Crafting station hooks not yet wired — script name TBD",
-                              "Run discover_crafting.py to confirm the FoM crafting station script name");
-            break;
-        }
-    }
-
     emitBootStatus("init", "complete",
                    std::to_string(manifests_.size()) + " manifest(s) loaded");
     log_.info("BOOT", "Bootstrap complete — " +
@@ -314,6 +304,41 @@ void EflBootstrap::stepRegisterHooks() {
                                      "Resource spawning is wired in v2.4");
                 });
             log_.info("HOOK", "Registered manifest hook: " + sh.target + " -> " + sh.handler);
+        }
+    }
+
+    // Crafting station hook — inject EFL recipes when any crafting menu opens (v2.4)
+    // gml_Script_spawn_crafting_menu confirmed in data.win.
+    // gml_Script_unlock_recipe@Ari@Ari confirmed in data.win.
+    // Station-specific filtering (recipesAtStation) deferred until recipe_context enum
+    // strings are confirmed via Ghidra — injects all trigger-unlocked EFL recipes for now.
+    bool hasCrafting = std::any_of(manifests_.begin(), manifests_.end(),
+                                   [](const auto& m) { return m.features.crafting; });
+    if (hasCrafting) {
+        if (hooks_->registerScriptHook(
+                "efl_crafting_inject", "gml_Script_spawn_crafting_menu",
+                [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*, int, YYTK::RValue*) {
+                    auto recipes = registries_.crafting().availableRecipes(registries_.triggers());
+                    int injected = 0;
+                    for (const auto* recipe : recipes) {
+                        try {
+                            routineInvoker_->callGameScript(
+                                "gml_Script_unlock_recipe@Ari@Ari",
+                                {YYTK::RValue(recipe->id.c_str())});
+                            ++injected;
+                        } catch (...) {
+                            log_.warn("CRAFT", "Failed to inject recipe: " + recipe->id);
+                        }
+                    }
+                    log_.info("CRAFT", "Injected " + std::to_string(injected) +
+                              " EFL recipe(s) into crafting menu");
+                })) {
+            log_.info("HOOK", "Registered: efl_crafting_inject (spawn_crafting_menu)");
+            emitBootStatus("hook.registered", "pass", "efl_crafting_inject");
+        } else {
+            diagnostics_.emit("CRAFT-W001", Severity::Warning, "CRAFT",
+                              "Failed to register crafting menu hook",
+                              "EFL recipes will not be injected into crafting stations");
         }
     }
 }
