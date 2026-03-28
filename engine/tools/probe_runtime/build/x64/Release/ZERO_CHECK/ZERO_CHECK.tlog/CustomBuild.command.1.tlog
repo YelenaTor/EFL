@@ -1,0 +1,10 @@
+^C:\USERS\GRAHA\DEV\EFL\ENGINE\TOOLS\PROBE_RUNTIME\BUILD\CMAKEFILES\0BF3CB2A50EE9818E8830EEC7DE83566\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Graha/dev/EFL/engine/tools/probe_runtime -BC:/Users/Graha/dev/EFL/engine/tools/probe_runtime/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Graha/dev/EFL/engine/tools/probe_runtime/build/EFL_Probe.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
