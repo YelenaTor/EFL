@@ -341,6 +341,45 @@ void EflBootstrap::stepRegisterHooks() {
                               "EFL recipes will not be injected into crafting stations");
         }
     }
+
+    // Dungeon vote injection — add EFL nodes to FoM biome vote pools (v2.4+)
+    // gml_Script_create_node_prototypes fires once per room on grid init.
+    // RUNTIME_VERIFY: inspect prototype struct after creation to find the vote
+    // table mutation API. Candidate: gml_Script_register_node@Anchor@Anchor.
+    if (!registries_.resources().resourcesWithDungeonVotes().empty()) {
+        if (hooks_->registerScriptHook(
+                "efl_dungeon_vote_inject", "gml_Script_create_node_prototypes",
+                [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
+                       int, YYTK::RValue*) {
+                    auto candidates = registries_.resources().resourcesWithDungeonVotes();
+                    for (const auto* res : candidates) {
+                        for (const auto& vote : res->spawnRules.dungeonVotes) {
+#ifndef EFL_STUB_SDK
+                            // TODO: call runtime vote-table mutation once API confirmed
+                            // e.g. routineInvoker_->callGameScript(
+                            //     "gml_Script_register_node@Anchor@Anchor",
+                            //     {res->kind, vote.biome, vote.pool, vote.weight});
+                            diagnostics_.emit("RESOURCE-H002", Severity::Hazard, "RESOURCE",
+                                "Dungeon vote stub: " + res->id + " not injected into "
+                                + vote.biome + "/" + vote.pool,
+                                "Hook runtime vote API once confirmed");
+#else
+                            log_.info("RESOURCE", "Stub: dungeon vote for " + res->id
+                                      + " biome=" + vote.biome
+                                      + " pool=" + vote.pool
+                                      + " weight=" + std::to_string(vote.weight));
+#endif
+                        }
+                    }
+                })) {
+            log_.info("HOOK", "Registered: efl_dungeon_vote_inject (create_node_prototypes)");
+            emitBootStatus("hook.registered", "pass", "efl_dungeon_vote_inject");
+        } else {
+            diagnostics_.emit("RESOURCE-W001", Severity::Warning, "RESOURCE",
+                "Failed to register dungeon vote hook",
+                "EFL resource nodes will not appear in FoM dungeon floors");
+        }
+    }
 }
 
 void EflBootstrap::stepConnectAreaRegistry() {

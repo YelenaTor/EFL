@@ -47,6 +47,11 @@ include_directories(include)
 # Collect sources
 file(GLOB_RECURSE EFL_SOURCES src/*.cpp)
 
+# Vendored SDK headers (MSBuild projects — consumed as headers/import libs only, not built from source)
+# YYToolkit: AurieFramework/YYToolkit @ 4.0.1 (stable branch)
+# Aurie:     AurieFramework/Aurie    @ unknown — check github.com/AurieFramework/Aurie/releases
+# To update: replace vendor/Aurie/include and vendor/YYToolkit/include with headers from the new SDK release.
+
 # YYTK types implementation (RValue constructors, etc.)
 set(YYTK_TYPES_CPP vendor/YYToolkit/include/YYToolkit/YYTK_Shared_Types.cpp)
 

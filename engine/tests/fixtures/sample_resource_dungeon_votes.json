@@ -1,0 +1,10 @@
+{
+    "id": "custom_ore",
+    "kind": "harvestable_node",
+    "spawnRules": {
+        "dungeonVotes": [
+            { "biome": "upper_mines", "pool": "ore_rock", "weight": 5 },
+            { "biome": "tide_caverns" }
+        ]
+    }
+}

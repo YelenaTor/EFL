@@ -48,6 +48,15 @@ std::optional<ResourceDef> ResourceDef::fromJson(const nlohmann::json& j) {
                 }
             }
         }
+        if (sr.contains("dungeonVotes")) {
+            for (const auto& entry : sr.at("dungeonVotes")) {
+                DungeonVoteEntry dv;
+                dv.biome  = entry.at("biome").get<std::string>();
+                dv.pool   = entry.value("pool", std::string("ore_rock"));
+                dv.weight = entry.value("weight", 1);
+                def.spawnRules.dungeonVotes.push_back(dv);
+            }
+        }
         if (sr.contains("respawnPolicy")) {
             def.spawnRules.respawnPolicy = sr.at("respawnPolicy").get<std::string>();
         }
@@ -95,6 +104,16 @@ std::vector<const ResourceDef*> ResourceRegistry::resourcesByKind(const std::str
     std::vector<const ResourceDef*> result;
     for (const auto& res : resources_) {
         if (res.kind == kind) {
+            result.push_back(&res);
+        }
+    }
+    return result;
+}
+
+std::vector<const ResourceDef*> ResourceRegistry::resourcesWithDungeonVotes() const {
+    std::vector<const ResourceDef*> result;
+    for (const auto& res : resources_) {
+        if (!res.spawnRules.dungeonVotes.empty()) {
             result.push_back(&res);
         }
     }

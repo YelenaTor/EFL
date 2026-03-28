@@ -29,6 +29,26 @@
           "description": "Per-area spawn grid position as 'grid_x,grid_y' (e.g. '3,7'). Adds the area to 'areas' automatically.",
           "additionalProperties": { "type": "string", "pattern": "^-?[0-9]+,-?[0-9]+$" }
         },
+        "dungeonVotes": {
+          "type": "array",
+          "description": "Inject this node into FoM dungeon biome vote pools alongside vanilla ore. Biomes: upper_mines (floors 1-19, copper/ruby), tide_caverns (20-39, iron/sapphire), deep_earth (40-59, silver/emerald), lava_caves (60-79, gold/diamond), ancient_ruins (80+, mistril/pink_diamond).",
+          "items": {
+            "type": "object",
+            "required": ["biome"],
+            "properties": {
+              "biome": {
+                "type": "string",
+                "enum": ["upper_mines", "tide_caverns", "deep_earth", "lava_caves", "ancient_ruins"]
+              },
+              "pool": {
+                "type": "string",
+                "enum": ["ore_rock", "small_rock", "seam_rock", "large_rock"],
+                "default": "ore_rock"
+              },
+              "weight": { "type": "integer", "minimum": 1, "default": 1 }
+            }
+          }
+        },
         "respawnPolicy": { "type": "string" },
         "seasonal": { "type": "array", "items": { "type": "string" } }
       }

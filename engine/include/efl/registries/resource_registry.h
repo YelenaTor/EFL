@@ -13,9 +13,16 @@ struct YieldEntry {
     int max = 1;
 };
 
+struct DungeonVoteEntry {
+    std::string biome;   // "upper_mines"|"tide_caverns"|"deep_earth"|"lava_caves"|"ancient_ruins"
+    std::string pool;    // "ore_rock"|"small_rock"|"seam_rock"|"large_rock"
+    int weight = 1;
+};
+
 struct SpawnRules {
     std::vector<std::string> areas;
     std::unordered_map<std::string, std::pair<int,int>> anchors; // area_id -> {grid_x, grid_y}
+    std::vector<DungeonVoteEntry> dungeonVotes;
     std::string respawnPolicy;
     std::vector<std::string> seasonal;
 };
@@ -42,6 +49,7 @@ public:
     const ResourceDef* getResource(const std::string& id) const;
     std::vector<const ResourceDef*> resourcesInArea(const std::string& areaId) const;
     std::vector<const ResourceDef*> resourcesByKind(const std::string& kind) const;
+    std::vector<const ResourceDef*> resourcesWithDungeonVotes() const;
     const std::vector<ResourceDef>& allResources() const;
 
 private:
