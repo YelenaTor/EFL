@@ -14,6 +14,7 @@ HijackedRoomBackend::HijackedRoomBackend(bridge::InstanceWalker& instanceWalker,
                                          LogService& log,
                                          EventBus& events,
                                          NpcRegistry& npcs,
+                                         StoryBridge& story,
                                          TriggerService& triggers,
                                          DiagnosticEmitter& diagnostics)
     : instanceWalker_(instanceWalker)
@@ -22,6 +23,7 @@ HijackedRoomBackend::HijackedRoomBackend(bridge::InstanceWalker& instanceWalker,
     , log_(log)
     , events_(events)
     , npcs_(npcs)
+    , story_(story)
     , triggers_(triggers)
     , diagnostics_(diagnostics)
 {}
@@ -100,10 +102,18 @@ void HijackedRoomBackend::activate(const AreaDef& area) {
                       std::string(ex.what()));
         }
     }
+
+    if (!area.entryEvent.empty()) {
+        story_.fireEvent(area.entryEvent, triggers_);
+    }
+    pendingExitEvent_ = area.exitEvent;
 }
 
 void HijackedRoomBackend::deactivate() {
-    // Nothing to do for hijacked rooms — room transitions are managed by the game
+    if (!pendingExitEvent_.empty()) {
+        story_.fireEvent(pendingExitEvent_, triggers_);
+        pendingExitEvent_.clear();
+    }
 }
 
 bool HijackedRoomBackend::supportsNativeRooms() const {

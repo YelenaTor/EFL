@@ -13,11 +13,12 @@ NativeRoomBackend::NativeRoomBackend(bridge::InstanceWalker& instanceWalker,
                                      LogService& log,
                                      EventBus& events,
                                      NpcRegistry& npcs,
+                                     StoryBridge& story,
                                      TriggerService& triggers,
                                      DiagnosticEmitter& diagnostics)
     : log_(log)
     , diagnostics_(diagnostics)
-    , fallback_(instanceWalker, routineInvoker, pipe, log, events, npcs, triggers, diagnostics)
+    , fallback_(instanceWalker, routineInvoker, pipe, log, events, npcs, story, triggers, diagnostics)
 {}
 
 void NativeRoomBackend::activate(const AreaDef& area) {

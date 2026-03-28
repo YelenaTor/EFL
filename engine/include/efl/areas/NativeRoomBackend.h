@@ -19,6 +19,7 @@ public:
                       LogService& log,
                       EventBus& events,
                       NpcRegistry& npcs,
+                      StoryBridge& story,
                       TriggerService& triggers,
                       DiagnosticEmitter& diagnostics);
 

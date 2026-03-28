@@ -185,13 +185,15 @@ bool EflBootstrap::initialize(const std::string& contentDir,
             roomBackend_ = std::make_unique<NativeRoomBackend>(
                 *instanceWalker_, *routineInvoker_, pipe_.get(),
                 log_, events_,
-                registries_.npcs(), registries_.triggers(), diagnostics_);
+                registries_.npcs(), registries_.story(),
+                registries_.triggers(), diagnostics_);
             log_.info("AREA", "Area backend: NativeRoomBackend");
         } else {
             roomBackend_ = std::make_unique<HijackedRoomBackend>(
                 *instanceWalker_, *routineInvoker_, pipe_.get(),
                 log_, events_,
-                registries_.npcs(), registries_.triggers(), diagnostics_);
+                registries_.npcs(), registries_.story(),
+                registries_.triggers(), diagnostics_);
             log_.info("AREA", "Area backend: HijackedRoomBackend");
         }
     }

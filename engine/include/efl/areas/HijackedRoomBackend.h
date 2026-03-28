@@ -5,6 +5,7 @@
 #include "efl/core/event_bus.h"
 #include "efl/core/diagnostics.h"
 #include "efl/registries/npc_registry.h"
+#include "efl/registries/story_bridge.h"
 #include "efl/core/trigger_service.h"
 
 #ifndef EFL_STUB_SDK
@@ -23,6 +24,7 @@ public:
                         LogService& log,
                         EventBus& events,
                         NpcRegistry& npcs,
+                        StoryBridge& story,
                         TriggerService& triggers,
                         DiagnosticEmitter& diagnostics);
 
@@ -37,8 +39,10 @@ private:
     LogService& log_;
     EventBus& events_;
     NpcRegistry& npcs_;
+    StoryBridge& story_;
     TriggerService& triggers_;
     DiagnosticEmitter& diagnostics_;
+    std::string pendingExitEvent_;
 };
 
 } // namespace efl
