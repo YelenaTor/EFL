@@ -90,9 +90,51 @@ Harvestable, breakable, and forageable nodes that spawn in areas.
 | `spawnRules.areas` | array | no | Area IDs where this resource can spawn |
 | `spawnRules.respawnPolicy` | string | no | How the resource respawns (e.g., `"daily"`, `"weekly"`) |
 | `spawnRules.seasonal` | array | no | Seasons when this resource is available |
+| `spawnRules.dungeonVotes` | array | no | Vote entries for FoM dungeon floor spawn pools (see below) |
 | `interaction` | object | no | How the player interacts with this resource |
 | `interaction.tool` | string | no | Required tool (e.g., `"pickaxe"`, `"hoe"`) |
 | `interaction.scriptMode` | string | no | Script behavior mode |
+
+### Dungeon Vote Spawn (`spawnRules.dungeonVotes`)
+
+Each entry in `dungeonVotes` adds this resource to a FoM dungeon floor spawn pool. EFL calls `register_node@Anchor@Anchor` once per entry when node prototypes are initialized.
+
+| Field | Type | Required | Description |
+|:------|:-----|:---------|:------------|
+| `biome` | string | yes | Dungeon biome (see table below) |
+| `pool` | string | yes | Spawn pool within the biome (see table below) |
+| `weight` | number | yes | Relative spawn weight (higher = more frequent) |
+
+**Biome strings** (from `dungeons/dungeons/biomes/<index>` in FoM data):
+
+| Biome string | Index | Floor range |
+|:-------------|:------|:------------|
+| `"upper_mines"` | 0 | Floors 1–19 |
+| `"tide_caverns"` | 1 | Floors 20–39 |
+| `"deep_earth"` | 2 | Floors 40–59 |
+| `"lava_caves"` | 3 | Floors 60–79 |
+| `"ancient_ruins"` | 4 | Floors 80+ |
+
+**Pool strings**:
+
+| Pool | Type |
+|:-----|:-----|
+| `ore_rock` | Primary ore nodes |
+| `seam_rock` | Seam ore nodes |
+| `small_rock` | Small rock nodes |
+| `large_rock` | Large rock obstacles |
+| `enemy` | Enemy spawn slots |
+| `junk` | Junk/debris nodes |
+| `breakable` | Breakable objects |
+| `chest` | Treasure chests |
+| `fish` | Fishing spots |
+| `bug` | Bug catch spots |
+| `forageable` | Forageable plants |
+| `void_rock` | Void-biome rock nodes |
+| `void_herb` | Void-biome herb nodes |
+| `void_pearl` | Void-biome pearl nodes |
+
+> **Note**: Dungeon vote injection requires `gml_Script_register_node@Anchor@Anchor`. The struct argument layout is pending a runtime probe session. This feature is implemented as a stub in the current release (votes are registered but injection call is deferred until struct fields are confirmed). See RESOURCE-W001 in diagnostic codes.
 
 ```json
 {
@@ -105,7 +147,11 @@ Harvestable, breakable, and forageable nodes that spawn in areas.
     "spawnRules": {
         "areas": ["crystal_cave"],
         "respawnPolicy": "weekly",
-        "seasonal": ["winter", "spring"]
+        "seasonal": ["winter", "spring"],
+        "dungeonVotes": [
+            { "biome": "deep_earth", "pool": "ore_rock", "weight": 10 },
+            { "biome": "lava_caves", "pool": "seam_rock", "weight": 5 }
+        ]
     },
     "interaction": {
         "tool": "pickaxe"
