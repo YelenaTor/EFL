@@ -1,9 +1,5 @@
 use std::fmt;
 
-use ratatui::style::Color;
-
-use crate::theme;
-
 /// Diagnostic severity levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -36,21 +32,21 @@ impl Severity {
         }
     }
 
-    /// Accent color for this severity.
-    pub fn color(&self) -> Color {
+    /// Accent color as [R, G, B] for this severity.
+    pub fn color(&self) -> [u8; 3] {
         match self {
-            Severity::Error => theme::MAGENTA,
-            Severity::Warning => theme::AMBER,
-            Severity::Hazard => theme::CYAN,
+            Severity::Error => [233, 30, 99],
+            Severity::Warning => [255, 193, 7],
+            Severity::Hazard => [0, 188, 212],
         }
     }
 
-    /// Badge background color for this severity.
-    pub fn badge_bg(&self) -> Color {
+    /// Badge background color as [R, G, B] for this severity.
+    pub fn badge_bg(&self) -> [u8; 3] {
         match self {
-            Severity::Error => theme::SEVERITY_ERROR_BG,
-            Severity::Warning => theme::SEVERITY_WARNING_BG,
-            Severity::Hazard => theme::SEVERITY_HAZARD_BG,
+            Severity::Error => [62, 8, 20],
+            Severity::Warning => [51, 39, 0],
+            Severity::Hazard => [0, 38, 43],
         }
     }
 

@@ -59,4 +59,9 @@ impl PipeReader {
     pub fn try_recv(&self) -> Option<IpcMessage> {
         self.rx.try_recv().ok()
     }
+
+    /// Check if the background reader thread has exited (pipe closed/dropped).
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self.rx.try_recv(), Err(mpsc::TryRecvError::Disconnected))
+    }
 }

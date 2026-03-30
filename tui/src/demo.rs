@@ -2,7 +2,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crate::ipc::IpcMessage;
+use crate::pipe::IpcMessage;
 
 /// Spawn a background thread that feeds mock IPC messages through the channel,
 /// simulating: boot sequence -> diagnostics -> monitor with live activity.
