@@ -28,7 +28,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('tui/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build TUI (release)
+      - name: Build DevKit (release)
         working-directory: tui
         run: cargo build --release
 
@@ -44,15 +44,20 @@ jobs:
         working-directory: engine/build
         run: ctest -C Release --output-on-failure
 
+      - name: Generate V2 documentation PDFs
+        shell: bash
+        run: |
+          pip install reportlab --quiet
+          python .temp/gen_pdfs.py
+
       - name: Package Player zip
         shell: bash
         run: |
           VERSION=${{ github.ref_name }}
           STAGE="EFL-${VERSION}"
-          mkdir -p "${STAGE}/hello_adventurer"
+          mkdir -p "${STAGE}"
           cp engine/build/bin/Release/EFL.dll "${STAGE}/" 2>/dev/null || true
           cp release/player/INSTALL.txt "${STAGE}/"
-          cp -r examples/hello_adventurer/* "${STAGE}/hello_adventurer/"
           7z a "EFL-${VERSION}.zip" "${STAGE}"
 
       - name: Package DevKit zip
@@ -60,15 +65,24 @@ jobs:
         run: |
           VERSION=${{ github.ref_name }}
           STAGE="EFL-DevKit-${VERSION}"
-          mkdir -p "${STAGE}/schemas"
-          cp engine/build/bin/Release/EFL.dll "${STAGE}/" 2>/dev/null || true
-          cp tui/target/release/efl-tui.exe "${STAGE}/" 2>/dev/null || true
-          cp tui/target/release/efl-pack.exe "${STAGE}/" 2>/dev/null || true
-          cp release/devkit/INSTALL.txt "${STAGE}/"
-          cp release/devkit/TUI_USAGE.txt "${STAGE}/"
-          cp release/devkit/GETTING_STARTED.txt "${STAGE}/"
-          cp release/devkit/SCHEMAS.txt "${STAGE}/"
-          cp schemas/*.schema.json "${STAGE}/schemas/"
+          DEVKIT="${STAGE}/EFL DevKit"
+          DOCS="${STAGE}/Docs"
+          mkdir -p "${DEVKIT}" "${DOCS}"
+
+          # DevKit app
+          cp engine/build/bin/Release/EFL.dll "${DEVKIT}/" 2>/dev/null || true
+          cp tui/target/release/efl-devkit.exe "${DEVKIT}/" 2>/dev/null || true
+
+          # V2 documentation
+          cp .temp/docs/EFL_Player_Guide.pdf       "${DOCS}/"
+          cp .temp/docs/EFL_Authoring_Guide.pdf    "${DOCS}/"
+          cp .temp/docs/EFL_DevKit_Guide.pdf       "${DOCS}/"
+          cp .temp/docs/EFL_Internals_Reference.pdf "${DOCS}/"
+          cp .temp/docs/EFL_Example_Mod_Guide.pdf  "${DOCS}/"
+
+          # Usage guide
+          cp release/devkit/USAGE.txt "${STAGE}/"
+
           7z a "EFL-DevKit-${VERSION}.zip" "${STAGE}"
 
       - name: Create GitHub Release
@@ -82,11 +96,13 @@ jobs:
 
             ### Downloads
 
-            - **EFL-${{ github.ref_name }}.zip** — For players: EFL engine + example content pack + install guide
-            - **EFL-DevKit-${{ github.ref_name }}.zip** — For developers: EFL engine + TUI diagnostic tool + dev guides
+            - **EFL-${{ github.ref_name }}.zip** — For players: EFL.dll + install guide
+            - **EFL-DevKit-${{ github.ref_name }}.zip** — For mod authors: EFL.dll + DevKit app + full V2 documentation
 
             ### Player Install
             Drop `EFL.dll` into `<game>\mods\aurie\` and content packs into `<game>\mods\efl\`.
+            See `INSTALL.txt` for step-by-step instructions.
 
-            ### Developer Install
-            See `INSTALL.txt` and `TUI_USAGE.txt` in the DevKit zip.
+            ### Mod Author Install
+            See `EFL DevKit\` folder for the GUI tool and `Docs\EFL_DevKit_Guide.pdf` for usage.
+            Start with `Docs\EFL_Authoring_Guide.pdf` to build your first content pack.

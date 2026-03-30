@@ -61,7 +61,7 @@ Bridges EFL's namespaced save operations to the game's persistence layer. All sa
 
 ## Area Backend Abstraction
 
-### HijackedRoomBackend (v1)
+### HijackedRoomBackend
 
 The v1 backend repopulates existing game rooms with custom content. When the player enters a hijacked room:
 
@@ -73,9 +73,9 @@ The v1 backend repopulates existing game rooms with custom content. When the pla
 
 This approach works within GameMaker's existing room system without requiring new room creation.
 
-### NativeRoomBackend (Planned, v2)
+### NativeRoomBackend (Reserved)
 
-The planned v2 backend will create entirely new rooms in the GameMaker runtime. This removes the dependency on existing rooms and allows for fully custom geometry.
+This backend will create entirely new rooms in the GameMaker runtime, removing the dependency on existing rooms and allowing fully custom geometry. It is not implemented in the current release.
 
 ## StoryBridge
 

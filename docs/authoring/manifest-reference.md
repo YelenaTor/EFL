@@ -96,7 +96,7 @@ Every EFL Pack must contain a `manifest.efl` file at its root. This file declare
 | `warps` | Define warp/transition points between areas |
 | `resources` | Register resource nodes (forageables, breakables, harvestables) |
 | `crafting` | Define crafting recipes |
-| `npcs` | Register NPCs (local to EFL areas in v1) |
+| `npcs` | Register NPCs (local to EFL areas; world NPCs reserved for a future release) |
 | `quests` | Define quest chains with stages and objectives |
 | `triggers` | Define reusable boolean trigger conditions |
 | `dialogue` | Register dialogue sets with conditional entries |

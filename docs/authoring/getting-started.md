@@ -135,8 +135,8 @@ From here you can:
 - Gate access with triggers — see [Triggers and Conditions](triggers-and-conditions.md)
 - Study the example pack — see [Examples](examples.md)
 
-## V1 Limitations
+## Current Limitations
 
-- **Hijacked backend only**: Custom areas reuse existing game rooms. True custom room creation (`native` backend) is planned for v2.
-- **Local NPCs only**: NPCs can only exist within EFL areas. World NPCs (global schedules, hearts, gifts) are planned for v2.
-- **No script injection**: You cannot define custom NPC behaviors or player abilities through scripting. This is planned for v2.
+- **Hijacked backend only**: Custom areas reuse existing game rooms. True custom room creation (`native` backend) is reserved for a future release.
+- **Local NPCs only**: NPCs can only exist within EFL areas. World NPCs (global schedules, hearts, gifts) are reserved for a future release.
+- **No script injection**: You cannot define custom NPC behaviors or player abilities through scripting. This is reserved for a future release.

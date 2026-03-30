@@ -15,7 +15,7 @@ Custom locations created by hijacking existing game rooms.
 |:------|:-----|:---------|:------------|
 | `id` | string | yes | Unique area identifier |
 | `displayName` | string | yes | Human-readable area name |
-| `backend` | string | yes | `"hijacked"` (v1) or `"native"` (v2) |
+| `backend` | string | yes | `"hijacked"` or `"native"` (reserved, not yet implemented) |
 | `hostRoom` | string | no | Game room to hijack (required when backend is `"hijacked"`) |
 | `locationId` | string | no | Location identifier for map integration |
 | `music` | string | no | Music track to play (empty string = no change) |
@@ -37,7 +37,7 @@ Custom locations created by hijacking existing game rooms.
 }
 ```
 
-**V1 limitation**: Only the `"hijacked"` backend is available. You must specify a `hostRoom` that exists in the base game.
+Only the `"hijacked"` backend is available in the current release. You must specify a `hostRoom` that exists in the base game. The `"native"` backend (true custom room creation) is reserved for a future release.
 
 ---
 
@@ -202,7 +202,7 @@ Characters that appear in EFL areas.
 |:------|:-----|:---------|:------------|
 | `id` | string | yes | Unique NPC identifier |
 | `displayName` | string | yes | Name shown in dialogue |
-| `kind` | string | yes | `"local"` (v1) or `"world"` (v2) |
+| `kind` | string | yes | `"local"` or `"world"` (reserved, not yet implemented) |
 | `defaultArea` | string | no | Area where this NPC spawns |
 | `spawnAnchor` | string | no | Position within the area |
 | `portraitPack` | string | no | Portrait set to use for dialogue |
@@ -224,7 +224,7 @@ Characters that appear in EFL areas.
 }
 ```
 
-**V1 limitation**: Only `"local"` NPCs are supported. They exist only within EFL areas. World NPCs with global schedules, hearts, and gift systems are planned for v2.
+Only `"local"` NPCs are supported in the current release. They exist only within EFL areas. World NPCs with global schedules, hearts, and gift systems are reserved for a future release.
 
 ---
 

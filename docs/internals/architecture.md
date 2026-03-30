@@ -39,7 +39,7 @@ The **only layer that touches game internals** (YYTK, Aurie, GML). Everything ab
 - **Named routine invoker**: Calls GML scripts by name through YYTK
 - **Instance walker**: Iterates over GameMaker instances
 - **Save namespace plumbing**: Bridges EFL save operations to the game's persistence layer
-- **Area backend abstraction**: `HijackedRoomBackend` (v1) repopulates existing rooms; `NativeRoomBackend` (v2, planned) will create new rooms
+- **Area backend abstraction**: `HijackedRoomBackend` repopulates existing rooms; `NativeRoomBackend` (true custom rooms, reserved for a future release) will create new rooms
 - **StoryBridge**: Reuses the game's `StoryExecutor` and cutscene hooks
 
 ### Layer C — Core Services
