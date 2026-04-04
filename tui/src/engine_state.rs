@@ -28,6 +28,7 @@ pub enum BootStepStatus {
 #[derive(Debug, Clone)]
 pub struct HookEntry {
     pub name: String,
+    pub kind: String,   // "yyc_script" | "script" | "frame" | "detour"
     pub fire_count: u32,
 }
 
@@ -136,8 +137,12 @@ impl EngineState {
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string();
+                let kind = msg.payload.get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("script")
+                    .to_string();
                 if !self.hooks.iter().any(|h| h.name == name) {
-                    self.hooks.push(HookEntry { name, fire_count: 0 });
+                    self.hooks.push(HookEntry { name, kind, fire_count: 0 });
                 }
             }
             "hook.fired" => {
@@ -186,7 +191,9 @@ impl EngineState {
                 }
             }
             "mod.status" => {
-                let id = msg.payload.get("id")
+                // Engine emits "modId" (matches bootstrap.cpp pipe_->write("mod.status",...))
+                let id = msg.payload.get("modId")
+                    .or_else(|| msg.payload.get("id"))  // fallback for older engine builds
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -207,6 +214,53 @@ impl EngineState {
                 } else {
                     self.mods.push(ModEntry { id, name, version, status });
                 }
+            }
+            "efl.version" => {
+                if let Some(v) = msg.payload.get("version").and_then(|v| v.as_str()) {
+                    self.efl_version = v.to_string();
+                }
+            }
+            "story.fired" => {
+                let event_id = msg.payload.get("eventId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let status = msg.payload.get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                self.event_log.push(EventLogEntry {
+                    timestamp: msg.timestamp.clone(),
+                    event_type: "STORY".to_string(),
+                    detail: format!("{event_id} [{status}]"),
+                });
+                if self.event_log.len() > 100 { self.event_log.remove(0); }
+            }
+            "quest.updated" => {
+                let quest_id = msg.payload.get("questId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let action = msg.payload.get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                self.event_log.push(EventLogEntry {
+                    timestamp: msg.timestamp.clone(),
+                    event_type: "QUEST".to_string(),
+                    detail: format!("{quest_id} {action}"),
+                });
+                if self.event_log.len() > 100 { self.event_log.remove(0); }
+            }
+            "dialogue.open" => {
+                let npc = msg.payload.get("npcId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let line = msg.payload.get("lineId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                self.event_log.push(EventLogEntry {
+                    timestamp: msg.timestamp.clone(),
+                    event_type: "DIALOGUE".to_string(),
+                    detail: format!("{npc}: {line}"),
+                });
+                if self.event_log.len() > 100 { self.event_log.remove(0); }
             }
             _ => {}
         }

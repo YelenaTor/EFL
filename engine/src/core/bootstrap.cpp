@@ -81,6 +81,9 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
 
     contentDir_ = contentDir;
     log_.info("BOOT", "EFL v" + eflVersionString() + " initializing");
+    if (pipe_) {
+        pipe_->write("efl.version", nlohmann::json{{"version", eflVersionString()}});
+    }
 
     // Phase: boot
     if (pipe_) {
@@ -197,6 +200,35 @@ bool EflBootstrap::initialize(const std::string& contentDir,
             log_.info("AREA", "Area backend: HijackedRoomBackend");
         }
     }
+
+    // Wire StoryBridge quest callbacks so story events can start/advance EFL quests.
+    // QuestRegistry tracks state internally; TriggerService evaluates questComplete
+    // conditions against it. No FoM game script hooks needed for EFL-internal quests.
+    registries_.story().onQuestStart = [this](const std::string& questId) {
+        registries_.quests().startQuest(questId);
+        log_.info("QUEST", "Quest started via story event: " + questId);
+        if (pipe_) {
+            pipe_->write("quest.updated", nlohmann::json{
+                {"questId", questId}, {"action", "start"},
+                {"state", "active"}});
+        }
+    };
+    registries_.story().onQuestAdvance = [this](const std::string& questId) {
+        std::string stageBefore = registries_.quests().getCurrentStage(questId);
+        // completeStage requires the current stage ID; derive it from the registry.
+        if (!stageBefore.empty()) {
+            registries_.quests().completeStage(questId, stageBefore);
+        }
+        std::string stageAfter = registries_.quests().getCurrentStage(questId);
+        log_.info("QUEST", "Quest advanced via story event: " + questId
+                  + " (" + stageBefore + " -> " + (stageAfter.empty() ? "complete" : stageAfter) + ")");
+        if (pipe_) {
+            pipe_->write("quest.updated", nlohmann::json{
+                {"questId", questId}, {"action", "advance"},
+                {"prevStage", stageBefore},
+                {"currentStage", stageAfter.empty() ? "complete" : stageAfter}});
+        }
+    };
 
     // Register v1 hooks
     stepRegisterHooks();
@@ -410,43 +442,64 @@ void EflBootstrap::stepConnectAreaRegistry() {
                 registries_.story().fireEvent(area->entryEvent, registries_.triggers());
 
             // Spawn resource nodes for this area.
-            // Script: gml_Script_attempt_to_write_object_node (SCPT 3251, confirmed).
-            // Confirmed args (from EFL_Probe.dll capture):
-            //   [0] = node_prototype_struct  (GML struct — layout TBD, see RESOURCE-H003)
-            //   [1] = grid_x (real)
-            //   [2] = grid_y (real)
-            //   [3],[4] = structs (likely Grid instance + spawn config)
-            //   [5..8] = flags (override, force, etc.)
-            // Simpler alternative: gml_Script_write_node@Grid@Grid(x, y, node_type_id)
-            //   where node_type_id is the integer asset index — requires mapping kind→ID.
-            // TODO(RESOURCE-H003): replace placeholder call with correct struct args once
-            // node_prototype_struct layout is confirmed via a follow-up probe session.
+            // Uses instance_create_layer if ResourceDef.objectName is set — the same
+            // approach used for NPC spawning. Full grid-native spawn via
+            // gml_Script_attempt_to_write_object_node is deferred until the node
+            // prototype struct layout is confirmed (RESOURCE-H003, ore-span probe).
             auto resources = registries_.resources().resourcesInArea(area->id);
             for (const auto* res : resources) {
-                auto it = res->spawnRules.anchors.find(area->id);
-                if (it == res->spawnRules.anchors.end()) {
+                auto anchorIt = res->spawnRules.anchors.find(area->id);
+                if (anchorIt == res->spawnRules.anchors.end()) {
                     log_.warn("RESOURCE", "No anchor for " + res->id + " in area " + area->id
                               + " — skipping spawn (add spawnRules.anchors in resource JSON)");
                     continue;
                 }
-                const auto [gx, gy] = it->second;
+                const auto [gx, gy] = anchorIt->second;
+
+                if (res->objectName.empty()) {
+                    // Grid-native spawn requires struct layout from probe — emit diagnostic.
+                    diagnostics_.emit("RESOURCE-W003", Severity::Warning, "RESOURCE",
+                        "Resource '" + res->id + "' has no objectName — spawn skipped",
+                        "Add \"objectName\": \"obj_<name>\" to resource JSON for interim spawn");
+                    continue;
+                }
+
 #ifndef EFL_STUB_SDK
                 try {
-                    // Placeholder: passes kind as string for arg[0] until struct layout
-                    // is confirmed. Will likely fail or spawn nothing; logs the attempt.
-                    routineInvoker_->callGameScript(
-                        "gml_Script_attempt_to_write_object_node",
-                        {YYTK::RValue(res->kind.c_str()),
-                         YYTK::RValue(static_cast<double>(gx)),
-                         YYTK::RValue(static_cast<double>(gy))});
-                    log_.info("RESOURCE", "Spawned " + res->id + " at (" +
-                              std::to_string(gx) + "," + std::to_string(gy) + ")");
+                    // Pixel coords: FoM grid cells are 32×32px.
+                    double px = static_cast<double>(gx) * 32.0;
+                    double py = static_cast<double>(gy) * 32.0;
+
+                    YYTK::RValue assetId = routineInvoker_->callBuiltin(
+                        "asset_get_index", {YYTK::RValue(res->objectName.c_str())});
+
+                    if (assetId.m_Kind == YYTK::VALUE_REAL && assetId.m_Real < 0) {
+                        log_.warn("RESOURCE", "Unknown FoM object '" + res->objectName
+                                  + "' for resource " + res->id
+                                  + " — check objectName in resource JSON");
+                        continue;
+                    }
+
+                    YYTK::RValue layer(YYTK::RValue("Instances"));
+                    routineInvoker_->callBuiltin("instance_create_layer",
+                        {YYTK::RValue(px), YYTK::RValue(py), layer, assetId});
+
+                    log_.info("RESOURCE", "Spawned " + res->id + " (" + res->objectName
+                              + ") at grid (" + std::to_string(gx) + "," + std::to_string(gy) + ")");
+                    if (pipe_) {
+                        pipe_->write("resource.spawned", nlohmann::json{
+                            {"resourceId", res->id}, {"areaId", area->id},
+                            {"objectName", res->objectName},
+                            {"gridX", gx}, {"gridY", gy}});
+                    }
                 } catch (const std::exception& ex) {
                     log_.warn("RESOURCE", "Spawn failed for " + res->id + ": " + ex.what());
                 }
 #else
-                log_.info("RESOURCE", "Stub: would spawn " + res->id + " at (" +
-                          std::to_string(gx) + "," + std::to_string(gy) + ") in " + area->id);
+                log_.info("RESOURCE", "Stub: would spawn " + res->id
+                          + " (" + res->objectName + ") at grid ("
+                          + std::to_string(gx) + "," + std::to_string(gy)
+                          + ") in " + area->id);
 #endif
             }
         }

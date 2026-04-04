@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -17,6 +18,7 @@ struct EventCommand {
     std::string npc;
     std::string line;
     std::string flag;
+    std::string quest;
 };
 
 struct EventDef {
@@ -38,9 +40,14 @@ public:
     const std::vector<EventDef>& allEvents() const;
 
     // Fire an event if its trigger conditions are met.
-    // Emits story.fired IPC. Actual game engine call is stubbed until
-    // the FoM story_start script name is confirmed via discovery tools.
-    void fireEvent(const std::string& eventId, const TriggerService& triggers);
+    // Processes set_flag/clear_flag commands via TriggerService, emits IPC for
+    // dialogue/quest commands. NativeBridge FoM StoryExecutor call deferred until
+    // gml_Script_story_start name is confirmed.
+    void fireEvent(const std::string& eventId, TriggerService& triggers);
+
+    // Callbacks wired by bootstrap to forward quest commands to QuestRegistry.
+    std::function<void(const std::string& questId)> onQuestStart;
+    std::function<void(const std::string& questId)> onQuestAdvance;
 
 private:
     PipeWriter* pipe_ = nullptr;

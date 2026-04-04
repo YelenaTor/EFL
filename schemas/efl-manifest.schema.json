@@ -26,11 +26,28 @@
       "type": "string",
       "description": "Minimum required EFL version (semver)"
     },
-    "dependencies": {
-      "type": "object",
-      "properties": {
-        "required": { "type": "array", "items": { "type": "string" } },
-        "optional": { "type": "array", "items": { "type": "string" } }
+    "requiredDeps": {
+      "type": "array",
+      "description": "Mods that must be present for this mod to load",
+      "items": {
+        "type": "object",
+        "required": ["modId", "versionRange"],
+        "properties": {
+          "modId":        { "type": "string", "description": "Dependency mod ID (reverse domain notation)" },
+          "versionRange": { "type": "string", "description": "Semver range, e.g. \"^1.0\"" }
+        }
+      }
+    },
+    "optionalDeps": {
+      "type": "array",
+      "description": "Mods that enhance this mod if present but are not required",
+      "items": {
+        "type": "object",
+        "required": ["modId", "versionRange"],
+        "properties": {
+          "modId":        { "type": "string" },
+          "versionRange": { "type": "string" }
+        }
       }
     },
     "features": {

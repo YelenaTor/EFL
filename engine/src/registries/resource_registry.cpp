@@ -16,6 +16,10 @@ std::optional<ResourceDef> ResourceDef::fromJson(const nlohmann::json& j) {
         def.sprite = j.at("sprite").get<std::string>();
     }
 
+    if (j.contains("objectName")) {
+        def.objectName = j.at("objectName").get<std::string>();
+    }
+
     if (j.contains("yieldTable")) {
         for (const auto& entry : j.at("yieldTable")) {
             YieldEntry ye;

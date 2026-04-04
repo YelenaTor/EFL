@@ -36,6 +36,7 @@ struct ResourceDef {
     std::string id;
     std::string kind;
     std::string sprite;
+    std::string objectName;   // optional: FoM GML object name for instance_create_layer spawn
     std::vector<YieldEntry> yieldTable;
     SpawnRules spawnRules;
     Interaction interaction;

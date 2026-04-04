@@ -15,7 +15,7 @@ HijackedRoomBackend::HijackedRoomBackend(bridge::InstanceWalker& instanceWalker,
                                          EventBus& events,
                                          NpcRegistry& npcs,
                                          StoryBridge& story,
-                                         TriggerService& triggers,
+                                         TriggerService& triggers,   // non-const: story events may set flags
                                          DiagnosticEmitter& diagnostics)
     : instanceWalker_(instanceWalker)
     , routineInvoker_(routineInvoker)
