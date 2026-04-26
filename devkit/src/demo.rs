@@ -169,7 +169,7 @@ pub fn start_demo() -> mpsc::Receiver<IpcMessage> {
         // Emit engine version
         if !send(
             &tx,
-            msg("efl.version", serde_json::json!({ "version": "1.0.0" })),
+            msg("efl.version", serde_json::json!({ "version": "1.1.0" })),
         ) {
             return;
         }
@@ -206,9 +206,9 @@ pub fn start_demo() -> mpsc::Receiver<IpcMessage> {
             msg(
                 "mod.status",
                 serde_json::json!({
-                    "modId": "dev.yoru.crystal-caves",
-                    "name": "Crystal Caves",
-                    "version": "0.3.1",
+                    "modId": "com.example.hello_adventurer",
+                    "name": "Hello Adventurer",
+                    "version": "1.1.0",
                     "status": "loaded",
                     "source": "efpack"
                 }),
@@ -224,7 +224,7 @@ pub fn start_demo() -> mpsc::Receiver<IpcMessage> {
                 serde_json::json!({
                     "modId": "dev.yoru.flora-expansion",
                     "name": "Flora's Garden",
-                    "version": "1.0.0",
+                    "version": "1.1.0",
                     "status": "loaded",
                     "source": "efpack"
                 }),

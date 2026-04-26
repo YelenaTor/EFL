@@ -26,7 +26,7 @@
 
     "version": {
       "type": "string",
-      "description": "Pack version in semver format (e.g. 1.0.0, 0.3.1-beta)."
+      "description": "Pack version in semver format (e.g. 1.1.0, 0.3.1-beta)."
     },
 
     "eflVersion": {

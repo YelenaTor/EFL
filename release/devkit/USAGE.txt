@@ -1,4 +1,4 @@
-EFL DevKit V1.0.0
+EFL DevKit V1.1.0
 =================
 Expansion Framework Library — Mod Authoring Tool
 Fields of Mistria
@@ -18,7 +18,7 @@ CONTENTS OF THIS ZIP
     EFL_Authoring_Guide.pdf     - Building content packs from scratch
     EFL_DevKit_Guide.pdf        - Using the DevKit GUI tool
     EFL_Internals_Reference.pdf - Architecture, hooks, and IPC protocol
-    EFL_Example_Mod_Guide.pdf   - Step-by-step example: Crystal Orb mod
+    EFL_Example_Mod_Guide.pdf   - Worked examples: Hello Adventurer + Hello Compat
 
   USAGE.txt (this file)
 
@@ -114,15 +114,7 @@ If something fails to load, check the EFL log at:
   <game folder>\EFL\logs\efl.log
 
 Codes follow the format  CATEGORY-SEVERITY###  (e.g. MANIFEST-E001).
-A full code reference is in Docs\EFL_Authoring_Guide.pdf.
-
-
-NEXT TESTER RELEASE
--------------------
-
-The companion example pack V2-example-mod.efpack (Crystal Orb) will be
-distributed in the next tester release. The Docs\EFL_Example_Mod_Guide.pdf
-covers its full structure so you can build and study it now.
+A full code reference is in Docs\EFL_DevKit_Guide.pdf.
 
 
 SUPPORT

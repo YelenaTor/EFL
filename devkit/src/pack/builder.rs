@@ -258,7 +258,7 @@ fn pack_folder_impl(content_dir: &Path, output_base_dir: &Path) -> Result<PackRe
 
     // ── 7. Build pack-meta.json ───────────────────────────────────────────────
     let pack_meta = serde_json::json!({
-        "eflVersion": "1.0.0",
+        "eflVersion": "1.1.0",
         "packedAt": Utc::now().to_rfc3339(),
         "manifestHash": manifest_hash,
         "packerVersion": env!("CARGO_PKG_VERSION"),
@@ -382,7 +382,7 @@ fn pack_dat_impl(content_dir: &Path, output_base_dir: &Path) -> Result<PackResul
         .map(|a| a.len())
         .unwrap_or(0);
     let pack_meta = serde_json::json!({
-        "eflVersion": "1.0.0",
+        "eflVersion": "1.1.0",
         "packedAt": Utc::now().to_rfc3339(),
         "manifestHash": manifest_hash,
         "packerVersion": env!("CARGO_PKG_VERSION"),
@@ -662,7 +662,7 @@ mod tests {
             "modId": mod_id,
             "name": "Test Mod",
             "version": version,
-            "eflVersion": "1.0.0",
+            "eflVersion": "1.1.0",
             "features": features,
         });
         fs::write(
@@ -763,7 +763,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let content_dir = tmp.path().join("mod");
         fs::create_dir_all(&content_dir).unwrap();
-        make_manifest(&content_dir, "com.test.inv", "1.0.0", &[]);
+        make_manifest(&content_dir, "com.test.inv", "1.1.0", &[]);
 
         fs::create_dir_all(content_dir.join("areas")).unwrap();
         fs::write(content_dir.join("areas").join("a.json"), b"{}").unwrap();
@@ -856,7 +856,7 @@ mod tests {
 
         let manifest = serde_json::json!({
             "schemaVersion": 2, "modId": "com.test.assets", "name": "A",
-            "version": "1.0.0", "eflVersion": "1.0.0",
+            "version": "1.1.0", "eflVersion": "1.1.0",
             "features": ["assets"],
             "assets": { "sprites": ["spr_MyNpc"], "sounds": [] }
         });
@@ -884,7 +884,7 @@ mod tests {
 
         let manifest = serde_json::json!({
             "schemaVersion": 2, "modId": "com.test.assets", "name": "A",
-            "version": "1.0.0", "eflVersion": "1.0.0",
+            "version": "1.1.0", "eflVersion": "1.1.0",
             "features": ["assets"],
             "assets": { "sprites": ["spr_Bad"], "sounds": [] }
         });
@@ -920,7 +920,7 @@ mod tests {
 
         let manifest = serde_json::json!({
             "schemaVersion": 2, "modId": "com.test.assets", "name": "A",
-            "version": "1.0.0", "eflVersion": "1.0.0",
+            "version": "1.1.0", "eflVersion": "1.1.0",
             "features": ["assets"],
             "assets": { "sprites": ["spr_Good"], "sounds": [] }
         });

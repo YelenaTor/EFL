@@ -67,7 +67,7 @@ pub fn analyze_pack(pack_path: &Path) -> Result<MigrationReport> {
     if !root.contains_key("eflVersion") {
         changes.push(MigrationChange {
             file: "manifest.efl".into(),
-            description: "Add missing eflVersion (default 1.0.0)".into(),
+            description: "Add missing eflVersion (default 1.1.0)".into(),
         });
     }
     if root.get("features").is_some_and(|v| v.is_object()) {
@@ -156,7 +156,7 @@ fn migrate_manifest(pack_path: &Path) -> Result<()> {
         root.insert("schemaVersion".into(), serde_json::json!(2));
     }
     if !root.contains_key("eflVersion") {
-        root.insert("eflVersion".into(), serde_json::json!("1.0.0"));
+        root.insert("eflVersion".into(), serde_json::json!("1.1.0"));
     }
     if let Some(features) = root.get("features").cloned() {
         if let Some(obj) = features.as_object() {

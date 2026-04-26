@@ -10,7 +10,7 @@ use crate::pack::{
     WatcherHandle,
 };
 use crate::pipe::{command_pipe_for_event_pipe, send_reload, ReloadCommand};
-use crate::state::{AppState, NewPackDraft, PackFolder, PipeStatus, ALL_FEATURES};
+use crate::state::{AppState, NewPackDraft, NewPackWizardStep, PackFolder, PipeStatus, ALL_FEATURES};
 use crate::theme;
 
 /// Map the discovered event pipe (`PipeStatus::Connected(...)`) to its
@@ -1199,173 +1199,336 @@ pub fn scan_project_folders(state: &mut AppState) {
     state.packs.pack_folders.sort_by(|a, b| a.name.cmp(&b.name));
 }
 
+fn sanitize_domain_root(input: &str) -> String {
+    input
+        .split('.')
+        .map(slugify)
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+fn default_mod_id_from(author: &str, mod_name: &str, domain_override: &str) -> String {
+    let author_slug = slugify(author);
+    let mod_slug = slugify(mod_name);
+    if mod_slug.is_empty() {
+        return String::new();
+    }
+    let root = sanitize_domain_root(domain_override);
+    if !root.is_empty() {
+        return format!("com.{root}.{mod_slug}");
+    }
+    if author_slug.is_empty() {
+        return format!("com.author.{mod_slug}");
+    }
+    format!("com.{author_slug}.{mod_slug}")
+}
+
+fn step_index(step: NewPackWizardStep) -> usize {
+    match step {
+        NewPackWizardStep::Author => 1,
+        NewPackWizardStep::ModName => 2,
+        NewPackWizardStep::ModId => 3,
+        NewPackWizardStep::Features => 4,
+        NewPackWizardStep::Momi => 5,
+        NewPackWizardStep::Review => 6,
+    }
+}
+
+fn next_step(step: NewPackWizardStep) -> NewPackWizardStep {
+    match step {
+        NewPackWizardStep::Author => NewPackWizardStep::ModName,
+        NewPackWizardStep::ModName => NewPackWizardStep::ModId,
+        NewPackWizardStep::ModId => NewPackWizardStep::Features,
+        NewPackWizardStep::Features => NewPackWizardStep::Momi,
+        NewPackWizardStep::Momi => NewPackWizardStep::Review,
+        NewPackWizardStep::Review => NewPackWizardStep::Review,
+    }
+}
+
+fn prev_step(step: NewPackWizardStep) -> NewPackWizardStep {
+    match step {
+        NewPackWizardStep::Author => NewPackWizardStep::Author,
+        NewPackWizardStep::ModName => NewPackWizardStep::Author,
+        NewPackWizardStep::ModId => NewPackWizardStep::ModName,
+        NewPackWizardStep::Features => NewPackWizardStep::ModId,
+        NewPackWizardStep::Momi => NewPackWizardStep::Features,
+        NewPackWizardStep::Review => NewPackWizardStep::Momi,
+    }
+}
+
+fn can_advance(draft: &NewPackDraft) -> Result<(), String> {
+    match draft.step {
+        NewPackWizardStep::Author => {
+            if draft.author.trim().is_empty() {
+                Err("Author name is required.".into())
+            } else {
+                Ok(())
+            }
+        }
+        NewPackWizardStep::ModName => {
+            if draft.mod_name.trim().is_empty() {
+                Err("Mod name is required.".into())
+            } else {
+                Ok(())
+            }
+        }
+        NewPackWizardStep::ModId => {
+            if draft.mod_id.trim().is_empty() {
+                Err("modId is required.".into())
+            } else {
+                Ok(())
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
 fn show_new_pack_modal(ctx: &egui::Context, state: &mut AppState) {
     let efl_version = state.engine.efl_version.clone();
-
     let mut open = state.packs.new_pack_modal_open;
-    egui::Window::new("New Content Pack")
+    egui::Window::new("New Content Pack Wizard")
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
-        .fixed_size([460.0, 560.0])
+        .fixed_size([520.0, 560.0])
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
             let draft = &mut state.packs.new_pack_draft;
-
-            egui::Grid::new("new_pack_grid")
-                .num_columns(2)
-                .spacing([8.0, 6.0])
-                .min_col_width(90.0)
-                .show(ui, |ui| {
-                    // Display name
-                    ui.label(
-                        RichText::new("Display name *")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(12.0),
-                    );
-                    let name_resp = ui.add(
-                        egui::TextEdit::singleline(&mut draft.display_name)
-                            .desired_width(280.0)
-                            .hint_text("Crystal Caverns Expansion"),
-                    );
-                    if name_resp.changed() && !draft.mod_id_user_edited {
-                        draft.mod_id = slugify(&draft.display_name);
+            let selected_features: Vec<String> = ALL_FEATURES
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| draft.selected_features[*i])
+                .map(|(_, (tag, _))| tag.to_string())
+                .collect();
+            ui.label(
+                RichText::new(format!("Step {} of 6", step_index(draft.step)))
+                    .color(theme::TEXT_MUTED)
+                    .size(11.0),
+            );
+            ui.add_space(6.0);
+            match draft.step {
+                NewPackWizardStep::Author => {
+                    ui.label(RichText::new("Who is the pack author?").size(15.0).strong());
+                    ui.add_space(8.0);
+                    let changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut draft.author)
+                                .desired_width(360.0)
+                                .hint_text("Author name"),
+                        )
+                        .changed();
+                    if changed {
+                        draft.author_slug = slugify(&draft.author);
+                        if !draft.mod_id_user_edited {
+                            draft.mod_id = default_mod_id_from(
+                                &draft.author,
+                                &draft.mod_name,
+                                &draft.domain_override,
+                            );
+                        }
                     }
-                    ui.end_row();
-
-                    // Mod ID
+                }
+                NewPackWizardStep::ModName => {
+                    ui.label(RichText::new("What should this pack be called?").size(15.0).strong());
+                    ui.add_space(8.0);
+                    let changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut draft.mod_name)
+                                .desired_width(360.0)
+                                .hint_text("Pack name"),
+                        )
+                        .changed();
+                    if changed {
+                        draft.mod_slug = slugify(&draft.mod_name);
+                        if draft.display_name.trim().is_empty() {
+                            draft.display_name = draft.mod_name.clone();
+                        }
+                        if !draft.mod_id_user_edited {
+                            draft.mod_id = default_mod_id_from(
+                                &draft.author,
+                                &draft.mod_name,
+                                &draft.domain_override,
+                            );
+                        }
+                    }
+                    ui.add_space(8.0);
                     ui.label(
-                        RichText::new("Mod ID *")
+                        RichText::new("Display name (shown in logs and DevKit)")
                             .color(theme::TEXT_SECONDARY)
                             .size(12.0),
                     );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut draft.display_name)
+                            .desired_width(360.0)
+                            .hint_text("Display name"),
+                    );
+                }
+                NewPackWizardStep::ModId => {
+                    ui.label(RichText::new("Confirm your modId").size(15.0).strong());
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(
+                            "Default is generated from author + mod name. You can edit it directly.",
+                        )
+                        .color(theme::TEXT_MUTED)
+                        .size(12.0),
+                    );
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("Advanced root override (optional)").size(12.0));
+                    let override_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut draft.domain_override)
+                                .desired_width(360.0)
+                                .hint_text("yourname.dev"),
+                        )
+                        .changed();
+                    if override_changed && !draft.mod_id_user_edited {
+                        draft.mod_id =
+                            default_mod_id_from(&draft.author, &draft.mod_name, &draft.domain_override);
+                    }
+                    ui.add_space(8.0);
                     let id_resp = ui.add(
                         egui::TextEdit::singleline(&mut draft.mod_id)
-                            .desired_width(280.0)
-                            .hint_text("com.yourname.packname"),
+                            .desired_width(360.0)
+                            .hint_text("com.author.pack"),
                     );
                     if id_resp.changed() {
                         draft.mod_id_user_edited = true;
                     }
-                    ui.end_row();
-
-                    // Author
+                    if ui.small_button("Recompute Default").clicked() {
+                        draft.mod_id =
+                            default_mod_id_from(&draft.author, &draft.mod_name, &draft.domain_override);
+                        draft.mod_id_user_edited = false;
+                    }
+                }
+                NewPackWizardStep::Features => {
+                    ui.label(RichText::new("Pick features to initialize").size(15.0).strong());
+                    ui.add_space(8.0);
+                    egui::Grid::new("features_grid")
+                        .num_columns(2)
+                        .spacing([24.0, 4.0])
+                        .show(ui, |ui| {
+                            for (i, (_, label)) in ALL_FEATURES.iter().enumerate() {
+                                let checked = &mut draft.selected_features[i];
+                                ui.checkbox(checked, RichText::new(*label).size(12.0));
+                                if i % 2 == 1 {
+                                    ui.end_row();
+                                }
+                            }
+                            if ALL_FEATURES.len() % 2 == 1 {
+                                ui.end_row();
+                            }
+                        });
+                    ui.add_space(8.0);
                     ui.label(
-                        RichText::new("Author")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(12.0),
-                    );
-                    ui.add(
-                        egui::TextEdit::singleline(&mut draft.author)
-                            .desired_width(280.0)
-                            .hint_text("Your name"),
-                    );
-                    ui.end_row();
-
-                    // Version
-                    ui.label(
-                        RichText::new("Version")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(12.0),
-                    );
-                    ui.add(
-                        egui::TextEdit::singleline(&mut draft.version)
-                            .desired_width(120.0)
-                            .hint_text("1.0.0"),
-                    );
-                    ui.end_row();
-
-                    // Description
-                    ui.label(
-                        RichText::new("Description")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(12.0),
-                    );
-                    ui.add(
-                        egui::TextEdit::multiline(&mut draft.description)
-                            .desired_width(280.0)
-                            .desired_rows(2)
-                            .hint_text("A short description of your pack"),
-                    );
-                    ui.end_row();
-
-                    // EFL version (read-only)
-                    ui.label(
-                        RichText::new("EFL version")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(12.0),
-                    );
-                    ui.label(
-                        RichText::new(&efl_version)
+                        RichText::new("If you add content families later that are not initialized here, update manifest feature scope and folders manually.")
                             .color(theme::TEXT_MUTED)
-                            .monospace()
-                            .size(12.0),
+                            .size(11.0),
                     );
-                    ui.end_row();
-                });
-
-            ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(6.0);
-
-            ui.label(
-                RichText::new("Features")
-                    .color(theme::TEXT_SECONDARY)
-                    .size(11.0),
-            );
-            ui.add_space(4.0);
-
-            egui::Grid::new("features_grid")
-                .num_columns(2)
-                .spacing([24.0, 4.0])
-                .show(ui, |ui| {
-                    for (i, (tag, label)) in ALL_FEATURES.iter().enumerate() {
-                        let checked = &mut draft.selected_features[i];
-                        ui.checkbox(checked, RichText::new(*label).size(12.0));
-                        if i % 2 == 1 {
+                }
+                NewPackWizardStep::Momi => {
+                    ui.label(RichText::new("MOMI integration").size(15.0).strong());
+                    ui.add_space(8.0);
+                    ui.checkbox(
+                        &mut draft.uses_momi,
+                        "Uses MOMI content (resources/sprites/other mod data)",
+                    );
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(
+                            "If enabled, wizard generates a companion {mod-id}.MOMI.efdat starter artifact.",
+                        )
+                        .color(theme::TEXT_MUTED)
+                        .size(11.0),
+                    );
+                }
+                NewPackWizardStep::Review => {
+                    ui.label(RichText::new("Review and create").size(15.0).strong());
+                    ui.add_space(8.0);
+                    egui::Grid::new("review_grid")
+                        .num_columns(2)
+                        .spacing([8.0, 6.0])
+                        .show(ui, |ui| {
+                            ui.label("Author");
+                            ui.label(draft.author.trim());
                             ui.end_row();
-                        }
-                        let _ = tag;
+                            ui.label("Name");
+                            ui.label(draft.mod_name.trim());
+                            ui.end_row();
+                            ui.label("Display");
+                            ui.label(draft.display_name.trim());
+                            ui.end_row();
+                            ui.label("modId");
+                            ui.label(draft.mod_id.trim());
+                            ui.end_row();
+                            ui.label("Version");
+                            ui.label(draft.version.trim());
+                            ui.end_row();
+                            ui.label("EFL");
+                            ui.label(&efl_version);
+                            ui.end_row();
+                            ui.label("Uses MOMI");
+                            ui.label(if draft.uses_momi { "Yes" } else { "No" });
+                            ui.end_row();
+                        });
+                    ui.add_space(6.0);
+                    if selected_features.is_empty() {
+                        ui.label(RichText::new("Features: none").color(theme::TEXT_MUTED));
+                    } else {
+                        ui.label(format!("Features: {}", selected_features.join(", ")));
                     }
-                    if ALL_FEATURES.len() % 2 == 1 {
-                        ui.end_row();
-                    }
-                });
+                }
+            }
 
-            ui.add_space(10.0);
-
-            // Snapshot values and drop the borrow before the button section,
-            // which needs to mutate state via closures.
-            let error_msg = draft.error.clone();
-            let can_create =
-                !draft.display_name.trim().is_empty() && !draft.mod_id.trim().is_empty();
             let pending_opts = NewPackOptions {
-                display_name: draft.display_name.trim().to_string(),
+                display_name: if draft.display_name.trim().is_empty() {
+                    draft.mod_name.trim().to_string()
+                } else {
+                    draft.display_name.trim().to_string()
+                },
                 mod_id: draft.mod_id.trim().to_string(),
                 author: draft.author.trim().to_string(),
                 version: if draft.version.trim().is_empty() {
-                    "1.0.0".to_string()
+                    "1.1.0".to_string()
                 } else {
                     draft.version.trim().to_string()
                 },
                 description: draft.description.trim().to_string(),
                 efl_version: efl_version.clone(),
-                features: ALL_FEATURES
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| draft.selected_features[*i])
-                    .map(|(_, (tag, _))| tag.to_string())
-                    .collect(),
+                features: selected_features,
+                uses_momi: draft.uses_momi,
             };
+            let can_create =
+                !pending_opts.display_name.is_empty() && !pending_opts.mod_id.is_empty();
+            let is_review = draft.step == NewPackWizardStep::Review;
+            let is_first = draft.step == NewPackWizardStep::Author;
+            let error_msg = draft.error.clone();
+            let current_step = draft.step;
             let _ = draft;
 
+            ui.add_space(12.0);
+            ui.separator();
             if let Some(ref err) = error_msg {
                 ui.label(RichText::new(err).color(theme::SEV_ERROR).size(12.0));
                 ui.add_space(4.0);
             }
-
             ui.horizontal(|ui| {
-                if ui
+                if ui.add_enabled(!is_first, egui::Button::new("Back")).clicked() {
+                    state.packs.new_pack_draft.step = prev_step(current_step);
+                    state.packs.new_pack_draft.error = None;
+                }
+                if !is_review {
+                    if ui.button("Next").clicked() {
+                        match can_advance(&state.packs.new_pack_draft) {
+                            Ok(_) => {
+                                state.packs.new_pack_draft.step = next_step(current_step);
+                                state.packs.new_pack_draft.error = None;
+                            }
+                            Err(e) => state.packs.new_pack_draft.error = Some(e),
+                        }
+                    }
+                } else if ui
                     .add_enabled(can_create, egui::Button::new("Create Pack"))
                     .clicked()
                 {
@@ -1381,7 +1544,6 @@ fn show_new_pack_modal(ctx: &egui::Context, state: &mut AppState) {
                         }
                     }
                 }
-
                 if ui.button("Cancel").clicked() {
                     state.packs.new_pack_modal_open = false;
                     state.packs.new_pack_draft = NewPackDraft::default();
@@ -1389,7 +1551,6 @@ fn show_new_pack_modal(ctx: &egui::Context, state: &mut AppState) {
             });
         });
 
-    // `open` is set false when the user clicks the window's X button.
     if !open {
         state.packs.new_pack_modal_open = false;
         state.packs.new_pack_draft = NewPackDraft::default();

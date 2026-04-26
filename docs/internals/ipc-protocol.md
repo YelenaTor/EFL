@@ -133,7 +133,7 @@ Emitted when a save read or write occurs.
     "timestamp": "...",
     "payload": {
         "operation": "save",
-        "key": "EFL/com.author.mod/area/crystal_cave"
+        "key": "EFL/com.author.mod/area/forgotten_greenhouse"
     }
 }
 ```
@@ -150,9 +150,9 @@ Emitted when a mod's status changes.
     "type": "mod.status",
     "timestamp": "...",
     "payload": {
-        "id": "com.author.mod",
-        "name": "Crystal Caves",
-        "version": "1.0.0",
+        "modId": "com.author.mod",
+        "name": "Forgotten Greenhouse Expansion",
+        "version": "1.1.0",
         "status": "active"
     }
 }
@@ -225,7 +225,7 @@ Broadcast once after `phase.transition: boot complete`, and re-broadcast on dema
     "type": "capabilities.snapshot",
     "timestamp": "...",
     "payload": {
-        "eflVersion": "1.0.0",
+        "eflVersion": "1.1.0",
         "handlers": ["efl_resource_despawn"],
         "features": [
             "areas", "warps", "npcs", "resources", "crafting", "quests",

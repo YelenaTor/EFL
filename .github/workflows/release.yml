@@ -80,6 +80,31 @@ jobs:
           fi
           echo "EFDAT_SMOKE_ARTIFACT=${DAT}" >> "${GITHUB_ENV}"
 
+      - name: Audit release docs for stale terminology
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES=(
+            docs/player/installing-content-packs.md
+            docs/authoring/getting-started.md
+            docs/authoring/content-types.md
+            docs/authoring/manifest-reference.md
+            docs/authoring/examples.md
+            docs/devkit/devkit-guide.md
+            docs/devkit/diagnostic-codes.md
+            docs/internals/architecture.md
+            docs/internals/engine-bridge.md
+            docs/internals/ipc-protocol.md
+            docs/internals/save-format.md
+            release/devkit/USAGE.txt
+            release/devkit/GETTING_STARTED.txt
+          )
+          STALE_PATTERN='Crystal Caves|V2-example-mod|\"native\" is planned but not yet available|NativeRoomBackend activated but native rooms are not yet implemented'
+          if rg -n -i "${STALE_PATTERN}" "${FILES[@]}"; then
+            echo "release-doc-audit: stale documentation terms found; update docs before releasing." >&2
+            exit 1
+          fi
+
       - name: Build PDF docs for release package
         shell: pwsh
         run: |

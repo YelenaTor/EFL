@@ -9,8 +9,8 @@ WHERE TO FIND IT
   The example mod lives in the EFL repository at:
     examples/hello_adventurer/
 
-  It is also included in the Player release zip (EFL-{version}.zip)
-  as a ready-to-use content pack.
+  It is included in the DevKit release zip (EFL-DevKit-{version}.zip),
+  alongside prebuilt smoke-test artifacts under examples/prebuilt/.
 
 WHAT IT DEMONSTRATES
   - manifest.efl    — Declaring mod identity, features, and settings

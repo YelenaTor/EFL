@@ -23,12 +23,28 @@ pub const ALL_FEATURES: &[(&str, &str)] = &[
     ("ipc", "IPC channels"),
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewPackWizardStep {
+    Author,
+    ModName,
+    ModId,
+    Features,
+    Momi,
+    Review,
+}
+
 /// Live editing state for the New Pack wizard.
 pub struct NewPackDraft {
+    pub step: NewPackWizardStep,
     pub display_name: String,
+    pub mod_name: String,
     pub mod_id: String,
     pub mod_id_user_edited: bool, // stops auto-mirroring display_name → mod_id
     pub author: String,
+    pub author_slug: String,
+    pub mod_slug: String,
+    pub domain_override: String,
+    pub uses_momi: bool,
     pub version: String,
     pub description: String,
     pub selected_features: Vec<bool>, // parallel to ALL_FEATURES
@@ -38,11 +54,17 @@ pub struct NewPackDraft {
 impl Default for NewPackDraft {
     fn default() -> Self {
         Self {
+            step: NewPackWizardStep::Author,
             display_name: String::new(),
+            mod_name: String::new(),
             mod_id: String::new(),
             mod_id_user_edited: false,
             author: String::new(),
-            version: "1.0.0".into(),
+            author_slug: String::new(),
+            mod_slug: String::new(),
+            domain_override: String::new(),
+            uses_momi: false,
+            version: "1.1.0".into(),
             description: String::new(),
             selected_features: vec![false; ALL_FEATURES.len()],
             error: None,

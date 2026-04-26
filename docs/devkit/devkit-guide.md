@@ -8,7 +8,7 @@ The DevKit combines content-pack tooling with a passive runtime monitor:
 
 - **Packs** — scan project folders, validate manifests, build `.efpack` and `.efdat`, inspect artifacts, run migration wizard, and watch packs for auto-repack
 - **Diagnostics** — show boot progress, structured diagnostics, runtime-sequence telemetry, hooks, events, save activity, loaded EFPacks, loaded MOMI mods, and compatibility relationships
-- **Creation Kit** — reserved in the UI shell for future editing workflows
+- **Creation Kit** — optional preview surface (gated by setting) for upcoming authoring workflows while production work stays in Packs + Diagnostics
 
 The runtime side is read-only. The engine writes JSON Lines to a named pipe, and the DevKit consumes that feed without mutating game state.
 
@@ -40,6 +40,22 @@ If Fields of Mistria is already running with EFL loaded, the DevKit will automat
 ```
 
 If no engine is running, the Diagnostics tab stays idle and the pack tooling continues to work.
+
+## New Pack Wizard
+
+Click **+ New** in the Packs sidebar to open the guided scaffold flow:
+
+1. Enter author name.
+2. Enter mod name (this becomes the default display name).
+3. Review/edit generated `modId` (default: `com.<author-slug>.<mod-slug>` with optional domain-root override).
+4. Select feature families to initialize.
+5. Choose whether the pack uses MOMI-provided content.
+6. Review and create.
+
+Wizard notes:
+- If `areas` is selected, scaffolded manifest defaults `settings.areaBackend` to `"native"`.
+- If MOMI usage is enabled, DevKit generates a companion `{mod-id}.MOMI.efdat` starter file in the pack root.
+- If you add content families later that were not initialized, update manifest feature scope and folders manually.
 
 ### Demo Mode
 

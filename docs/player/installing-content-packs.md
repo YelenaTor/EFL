@@ -45,7 +45,7 @@ Check the EFL log file at `<game>/EFL/logs/` after launching. A successful load 
 
 ```
 [BOOT] EFL v2.0.0 initializing
-[BOOT] Loaded manifest: com.author.my-mod v1.0.0
+[BOOT] Loaded manifest: com.author.my-mod v1.1.0
 [BOOT] Bootstrap complete — 1 manifest(s) loaded
 ```
 

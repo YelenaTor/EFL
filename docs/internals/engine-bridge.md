@@ -73,9 +73,9 @@ The v1 backend repopulates existing game rooms with custom content. When the pla
 
 This approach works within GameMaker's existing room system without requiring new room creation.
 
-### NativeRoomBackend (Reserved)
+### NativeRoomBackend
 
-This backend will create entirely new rooms in the GameMaker runtime, removing the dependency on existing rooms and allowing fully custom geometry. It is not implemented in the current release.
+This backend creates entirely new rooms in the GameMaker runtime, removing the dependency on an existing host room. At runtime it handles room creation, room entry, and cleanup for native-backed areas.
 
 ## StoryBridge
 

@@ -15,7 +15,7 @@ Custom locations created by hijacking existing game rooms.
 |:------|:-----|:---------|:------------|
 | `id` | string | yes | Unique area identifier |
 | `displayName` | string | yes | Human-readable area name |
-| `backend` | string | yes | `"hijacked"` or `"native"` (reserved, not yet implemented) |
+| `backend` | string | yes | `"hijacked"` or `"native"` |
 | `hostRoom` | string | no | Game room to hijack (required when backend is `"hijacked"`) |
 | `locationId` | string | no | Location identifier for map integration |
 | `music` | string | no | Music track to play (empty string = no change) |
@@ -27,17 +27,18 @@ Custom locations created by hijacking existing game rooms.
 
 ```json
 {
-    "id": "crystal_cave",
-    "displayName": "Crystal Cave",
+    "id": "forgotten_greenhouse",
+    "displayName": "Forgotten Greenhouse",
     "backend": "hijacked",
-    "hostRoom": "rm_mine_04",
+    "hostRoom": "rm_water_seal_0",
     "music": "",
-    "entryAnchor": "cave_entrance",
-    "unlockTrigger": "has_pickaxe_trigger"
+    "entryAnchor": "greenhouse_gate",
+    "unlockTrigger": "greenhouse_unlocked"
 }
 ```
 
-Only the `"hijacked"` backend is available in the current release. You must specify a `hostRoom` that exists in the base game. The `"native"` backend (true custom room creation) is reserved for a future release.
+When using `"hijacked"`, you must provide a `hostRoom` that exists in the base game.  
+When using `"native"`, EFL creates and owns a runtime room for the area session.
 
 ---
 
@@ -61,13 +62,13 @@ Transition points that connect two areas.
 
 ```json
 {
-    "id": "town_to_cave",
+    "id": "town_to_greenhouse",
     "sourceArea": "town",
-    "sourceAnchor": "cave_door",
-    "targetArea": "crystal_cave",
-    "targetAnchor": "cave_entrance",
-    "requireTrigger": "has_pickaxe_trigger",
-    "failureText": "The entrance is blocked by rubble. Maybe a pickaxe would help."
+    "sourceAnchor": "greenhouse_door",
+    "targetArea": "forgotten_greenhouse",
+    "targetAnchor": "greenhouse_gate",
+    "requireTrigger": "greenhouse_unlocked",
+    "failureText": "The gate is rusted shut. Maybe someone in town knows the key."
 }
 ```
 
@@ -103,7 +104,7 @@ Harvestable, breakable, and forageable nodes that spawn in areas.
 
 ### Dungeon Vote Spawn (`spawnRules.dungeonVotes`)
 
-Each entry in `dungeonVotes` adds this resource to a FoM dungeon floor spawn pool. EFL calls `register_node@Anchor@Anchor` once per entry when node prototypes are initialized.
+Each entry in `dungeonVotes` adds this resource to a FoM dungeon floor spawn pool through EFL's runtime dungeon vote hook path.
 
 | Field | Type | Required | Description |
 |:------|:-----|:---------|:------------|
@@ -140,7 +141,7 @@ Each entry in `dungeonVotes` adds this resource to a FoM dungeon floor spawn poo
 | `void_herb` | Void-biome herb nodes |
 | `void_pearl` | Void-biome pearl nodes |
 
-> **Note**: Dungeon vote injection requires `gml_Script_register_node@Anchor@Anchor`. The struct argument layout is pending a runtime probe session. This feature is implemented as a stub in the current release (votes are registered but injection call is deferred until struct fields are confirmed). See RESOURCE-W001 in diagnostic codes.
+> **Note**: Dungeon vote injection depends on runtime hook compatibility for your current FoM build. If the hook cannot bind, EFL emits `RESOURCE-W001` and falls back without vote injection.
 
 ```json
 {
@@ -152,8 +153,8 @@ Each entry in `dungeonVotes` adds this resource to a FoM dungeon floor spawn poo
         { "item": "mythril_chunk", "itemId": 312, "min": 1, "max": 3 }
     ],
     "spawnRules": {
-        "areas": ["crystal_cave"],
-        "anchors": { "crystal_cave": "5,12" },
+        "areas": ["forgotten_greenhouse"],
+        "anchors": { "forgotten_greenhouse": "5,12" },
         "respawnPolicy": "daily",
         "seasonal": ["winter", "spring"],
         "dungeonVotes": [
@@ -221,13 +222,13 @@ Characters that appear in EFL areas.
 
 ```json
 {
-    "id": "cave_hermit",
-    "displayName": "Old Hermit",
+    "id": "town_keeper",
+    "displayName": "Town Keeper",
     "kind": "local",
-    "defaultArea": "crystal_cave",
+    "defaultArea": "forgotten_greenhouse",
     "spawnAnchor": "npc_spot_01",
     "portraitPack": "hayden",
-    "dialogueSet": "hermit_dialogue",
+    "dialogueSet": "keeper_dialogue",
     "unlockTrigger": ""
 }
 ```
@@ -309,20 +310,20 @@ Conditional dialogue entries for NPCs.
 
 ```json
 {
-    "id": "hermit_dialogue",
-    "npc": "cave_hermit",
+    "id": "keeper_dialogue",
+    "npc": "town_keeper",
     "entries": [
         {
             "id": "greeting",
-            "text": "Ah, a visitor! It's been ages since anyone found this cave.",
+            "text": "Ah, a visitor! It's been ages since anyone stepped in here.",
             "portrait": "happy",
             "condition": ""
         },
         {
             "id": "return_visit",
-            "text": "Back again? You must like crystals as much as I do.",
+            "text": "Back again? Good. This place needs a steady hand.",
             "portrait": "wink",
-            "condition": "flag:visited_cave"
+            "condition": "flag:visited_greenhouse"
         }
     ]
 }
@@ -351,8 +352,8 @@ Multi-stage quest chains with objectives and rewards.
 
 ```json
 {
-    "id": "crystal_collection",
-    "title": "Crystal Collection",
+    "id": "greenhouse_recovery",
+    "title": "Greenhouse Recovery",
     "stages": [
         {
             "id": "gather",
@@ -366,12 +367,12 @@ Multi-stage quest chains with objectives and rewards.
         {
             "id": "return",
             "objectives": [
-                { "type": "talkTo", "npc": "cave_hermit" }
+                { "type": "talkTo", "npc": "town_keeper" }
             ]
         }
     ],
     "rewards": [
-        { "type": "item", "item": "hermit_blessing", "count": 1 }
+        { "type": "item", "item": "keeper_token", "count": 1 }
     ]
 }
 ```
@@ -426,12 +427,12 @@ Cutscene eligibility declarations and EFL-side side effects.
 
 ```json
 {
-    "id": "crystal_cave_reveal",
+    "id": "greenhouse_reveal",
     "trigger": "has_cave_key",
     "once": true,
     "onFire": {
-        "setFlags": ["cave_revealed"],
-        "startQuest": "find_crystals"
+        "setFlags": ["greenhouse_revealed"],
+        "startQuest": "greenhouse_recovery"
     }
 }
 ```

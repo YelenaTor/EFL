@@ -44,7 +44,7 @@ Create `manifest.efl` in your pack folder:
     "modId": "com.yourname.my-first-pack",
     "name": "My First Pack",
     "version": "0.1.0",
-    "eflVersion": "1.0.0",
+    "eflVersion": "1.1.0",
     "features": ["areas", "warps"],
     "settings": {
         "strictMode": true,
@@ -62,7 +62,7 @@ Create `manifest.efl` in your pack folder:
 - **eflVersion**: The minimum EFL version your pack requires.
 - **features**: A string array listing which EFL subsystems your pack uses. Only declare what you need. In strict mode, accessing an undeclared subsystem is an error; in non-strict mode, it's a warning.
 - **settings.strictMode**: When `true`, EFL rejects attempts to use undeclared features. Recommended for development.
-- **settings.areaBackend**: Use `"hijacked"` — this reuses existing game rooms as the basis for custom areas. (`"native"` is planned but not yet available.)
+- **settings.areaBackend**: Use `"hijacked"` to repopulate an existing room, or `"native"` for a runtime-created custom room.
 
 ## Step 3: Define an Area
 
@@ -157,8 +157,8 @@ From here you can:
 
 ## Current Limitations
 
-- **Hijacked backend only**: Custom areas reuse existing game rooms. True custom room creation (`native` backend) is planned but not yet available — use `"areaBackend": "hijacked"`.
-- **Dungeon vote injection is stubbed**: Resource nodes with `dungeonVotes` register the hook but won't appear on dungeon floors yet (pending an internal struct probe). See `RESOURCE-W001`.
+- **Area backend choice matters**: `hijacked` reuses existing room geometry, while `native` creates a runtime room that EFL owns for the session.
+- **Dungeon vote injection depends on runtime hook health**: Resource entries with `dungeonVotes` rely on the dungeon hook path. If the hook cannot bind for your game build, EFL emits `RESOURCE-W001`.
 - **Crafting station filtering**: All trigger-unlocked EFL recipes currently inject into every crafting menu regardless of the `station` field.
 - **Resource item grants require `itemId`**: Yield table entries must include a numeric `itemId` (the FoM item index) for harvested items to actually be granted to the player. Without `itemId`, the harvest is logged and emitted via IPC but no item is given.
 - **No GML script injection**: Content hooks use the `"callback"` mode only. `mode: "inject"` is reserved for a future release and emits `HOOK-W002` if used.

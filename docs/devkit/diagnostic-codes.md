@@ -104,7 +104,7 @@ Example: `MANIFEST-E001` — an error from the manifest subsystem, code 001.
 
 | Code | Severity | Trigger | What to do |
 |:-----|:---------|:--------|:-----------|
-| `AREA-H001` | Hazard | `NativeRoomBackend` activated but native rooms are not yet implemented; falling back to `HijackedRoomBackend` | Set `areaBackend` to `"hijacked"` in manifest settings to suppress this warning |
+| `AREA-H001` | Hazard | `NativeRoomBackend` was requested but could not be initialized cleanly; EFL fell back to `HijackedRoomBackend` | Check engine logs for native-room bootstrap failures, then retry or temporarily use `"areaBackend": "hijacked"` |
 | `AREA-E001` | Error | Failed to parse an area definition file | Check JSON syntax and required fields in the reported `.json` file |
 | `AREA-E030` | Error | An area definition is missing a required `id` | Add a non-empty `id` to the area JSON file |
 | `AREA-E031` | Error | Two area definitions share the same `id` | Ensure each area has a unique `id` within the pack |

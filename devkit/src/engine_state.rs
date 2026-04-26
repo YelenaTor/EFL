@@ -152,7 +152,7 @@ impl EngineState {
             phase: Phase::Boot,
             collector: DiagnosticCollector::new(),
             boot_steps: Vec::new(),
-            efl_version: String::from("1.0.0"),
+            efl_version: String::from("1.1.0"),
             hooks: Vec::new(),
             event_log: Vec::new(),
             save_log: Vec::new(),

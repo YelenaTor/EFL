@@ -10,7 +10,7 @@ pub struct BuildHistoryEntry {
     pub mod_id: String,
     pub version: String,
     pub built_at: String,
-    /// Path relative to the output_base_dir, e.g. "com.yoru.mod/1.0.0/mod-1.0.0.efpack"
+    /// Path relative to the output_base_dir, e.g. "com.yoru.mod/1.1.0/mod-1.1.0.efpack"
     pub artifact_path: String,
     pub manifest_hash: String,
 }
@@ -73,25 +73,25 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         append_build(
             tmp.path(),
-            &entry("com.a.mod", "1.0.0", "2026-04-20T10:00:00Z"),
+            &entry("com.a.mod", "1.1.0", "2026-04-20T10:00:00Z"),
         )
         .unwrap();
         append_build(
             tmp.path(),
-            &entry("com.a.mod", "1.1.0", "2026-04-25T14:00:00Z"),
+            &entry("com.a.mod", "1.1.1", "2026-04-25T14:00:00Z"),
         )
         .unwrap();
         let history = read_history(tmp.path()).unwrap();
         assert_eq!(history.len(), 2);
-        // Newest-first: 1.1.0 was appended last, so it's at index 0.
-        assert_eq!(history[0].version, "1.1.0");
-        assert_eq!(history[1].version, "1.0.0");
+        // Newest-first: 1.1.1 was appended last, so it's at index 0.
+        assert_eq!(history[0].version, "1.1.1");
+        assert_eq!(history[1].version, "1.1.0");
     }
 
     #[test]
     fn test_registry_upsert_same_version() {
         let tmp = TempDir::new().unwrap();
-        let mut e = entry("com.a.mod", "1.0.0", "2026-04-20T10:00:00Z");
+        let mut e = entry("com.a.mod", "1.1.0", "2026-04-20T10:00:00Z");
         append_build(tmp.path(), &e).unwrap();
         e.built_at = "2026-04-25T14:00:00Z".into();
         e.manifest_hash = "sha256:newHash".into();
@@ -111,12 +111,12 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         append_build(
             tmp.path(),
-            &entry("com.a.mod", "1.0.0", "2026-04-20T10:00:00Z"),
+            &entry("com.a.mod", "1.1.0", "2026-04-20T10:00:00Z"),
         )
         .unwrap();
         append_build(
             tmp.path(),
-            &entry("com.b.mod", "1.0.0", "2026-04-21T10:00:00Z"),
+            &entry("com.b.mod", "1.1.0", "2026-04-21T10:00:00Z"),
         )
         .unwrap();
         let history = read_history(tmp.path()).unwrap();

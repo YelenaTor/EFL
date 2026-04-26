@@ -18,11 +18,11 @@ EFL/<modId>/<feature>/<contentId>
 ### Examples
 
 ```
-EFL/com.author.crystalmod/flags/met_hermit
-EFL/com.author.crystalmod/quest/crystal_collection
-EFL/com.author.crystalmod/npc/cave_hermit
-EFL/com.author.crystalmod/area/crystal_cave
-EFL/com.author.crystalmod/resource/mythril_ore_respawn
+EFL/com.example.hello_adventurer/flags/met_guide
+EFL/com.example.hello_adventurer/quest/greenhouse_restoration
+EFL/com.example.hello_adventurer/npc/town_guide
+EFL/com.example.hello_adventurer/area/forgotten_greenhouse
+EFL/com.example.hello_adventurer/resource/wild_herb_respawn
 ```
 
 ## What Is Persisted

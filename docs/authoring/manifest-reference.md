@@ -13,8 +13,8 @@ If you are upgrading an older pack, use DevKit **Packs -> Migrate...** first. Th
     "schemaVersion": 2,
     "modId": "com.author.my-mod",
     "name": "My Mod",
-    "version": "1.0.0",
-    "eflVersion": "1.0.0",
+    "version": "1.1.0",
+    "eflVersion": "1.1.0",
     "author": "Your Name",
     "description": "A short description of what this mod does.",
 
@@ -87,7 +87,7 @@ If you are upgrading an older pack, use DevKit **Packs -> Migrate...** first. Th
 
 - **Type**: string
 - **Required**: yes
-- **Description**: Pack version in [semver](https://semver.org/) format (e.g. `1.0.0`, `0.3.1-beta`).
+- **Description**: Pack version in [semver](https://semver.org/) format (e.g. `1.1.0`, `0.3.1-beta`).
 
 ---
 
@@ -287,17 +287,17 @@ Use an `.efdat` when:
 ```json
 {
     "schemaVersion": 1,
-    "datId": "com.crystalmod.compat.fancytextures",
-    "name": "CrystalMod × FancyNPCTextures Compatibility",
-    "version": "1.0.0",
-    "eflVersion": "1.0.0",
+    "datId": "com.hello.compat.fancytextures",
+    "name": "HelloAdventurer × FancyNPCTextures Compatibility",
+    "version": "1.1.0",
+    "eflVersion": "1.1.0",
     "author": "CompatAuthor",
-    "description": "Declares compatibility between CrystalMod and FancyNPCTextures.",
+    "description": "Declares compatibility between HelloAdventurer and FancyNPCTextures.",
 
     "relationships": [
         {
             "type": "requires",
-            "target": { "kind": "efpack", "id": "com.test.crystalmod", "versionRange": "^1.0" }
+            "target": { "kind": "efpack", "id": "com.example.hello_adventurer", "versionRange": "^1.0" }
         },
         {
             "type": "requires",

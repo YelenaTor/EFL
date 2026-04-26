@@ -7,7 +7,7 @@ TEST(ManifestParser, ParseValidManifest) {
     auto& manifest = result.value();
     EXPECT_EQ(manifest.modId, "com.test.example");
     EXPECT_EQ(manifest.name, "Test Mod");
-    EXPECT_EQ(manifest.version, "1.0.0");
+    EXPECT_EQ(manifest.version, "1.1.0");
     EXPECT_TRUE(manifest.features.areas);
     EXPECT_TRUE(manifest.features.warps);
     EXPECT_FALSE(manifest.features.npcs);
@@ -25,7 +25,7 @@ TEST(ManifestParser, ParseFromString) {
         "modId": "com.test.inline",
         "name": "Inline Test",
         "version": "0.1.0",
-        "eflVersion": "1.0.0"
+        "eflVersion": "1.1.0"
     })";
     auto result = efl::ManifestParser::parseString(json);
     ASSERT_TRUE(result.has_value());
@@ -34,8 +34,8 @@ TEST(ManifestParser, ParseFromString) {
 
 TEST(ManifestParser, VersionCompatibility) {
     efl::Manifest m;
-    m.eflVersion = "1.0.0";
-    EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "1.0.0"));
+    m.eflVersion = "1.1.0";
     EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "1.1.0"));
-    EXPECT_FALSE(efl::ManifestParser::isCompatible(m, "0.9.0"));
+    EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "1.2.0"));
+    EXPECT_FALSE(efl::ManifestParser::isCompatible(m, "1.0.0"));
 }

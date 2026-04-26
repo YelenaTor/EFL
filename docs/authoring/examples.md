@@ -43,8 +43,8 @@ examples/hello_adventurer/
     "schemaVersion": 2,
     "modId": "com.efl.example.hello-adventurer",
     "name": "Hello, Adventurer!",
-    "version": "1.0.0",
-    "eflVersion": "1.0.0",
+    "version": "1.1.0",
+    "eflVersion": "1.1.0",
     "author": "EFL Team",
     "description": "Example EFL content pack demonstrating areas, NPCs, dialogue, and story events.",
     "features": ["areas", "warps", "npcs", "triggers", "dialogue", "story", "calendar"],
@@ -209,8 +209,8 @@ examples/hello_compat/
     "schemaVersion": 1,
     "datId": "com.efl.example.compat.hello-adventurer.x.fluffkin-mod",
     "name": "Hello Adventurer x Fluffkin Compatibility",
-    "version": "1.0.0",
-    "eflVersion": "1.0.0",
+    "version": "1.1.0",
+    "eflVersion": "1.1.0",
     "author": "EFL Team",
     "description": "Reference .efdat showing how a third party can declare compatibility relationships between an EFL pack and a MOMI mod without shipping any content of their own.",
     "relationships": [
@@ -219,7 +219,7 @@ examples/hello_compat/
             "target": {
                 "kind": "efpack",
                 "id": "com.efl.example.hello-adventurer",
-                "versionRange": "^1.0.0"
+                "versionRange": "^1.1.0"
             },
             "reason": "This artifact attaches calendar wiring to the Hello Adventurer pack."
         },
@@ -228,7 +228,7 @@ examples/hello_compat/
             "target": {
                 "kind": "momi",
                 "id": "com.example.fluffkin-mod",
-                "versionRange": ">=1.0.0"
+                "versionRange": ">=1.1.0"
             },
             "reason": "Fluffkin Mod ships the portrait pack and __mist__ cutscene Hello Adventurer references."
         },

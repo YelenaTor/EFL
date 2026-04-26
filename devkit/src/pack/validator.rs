@@ -1447,8 +1447,8 @@ mod tests {
             "schemaVersion": 2,
             "modId": "com.test.graph",
             "name": "Graph Test",
-            "version": "1.0.0",
-            "eflVersion": "1.0.0",
+            "version": "1.1.0",
+            "eflVersion": "1.1.0",
             "features": ["areas", "warps", "npcs", "dialogue", "story", "quests", "resources"],
         });
         fs::write(
@@ -1479,8 +1479,8 @@ mod tests {
             "schemaVersion": 1,
             "datId": "com.test.compat.bridge",
             "name": "Compat Bridge",
-            "version": "1.0.0",
-            "eflVersion": "1.0.0",
+            "version": "1.1.0",
+            "eflVersion": "1.1.0",
             "relationships": relationships,
         });
         fs::write(
@@ -1727,8 +1727,8 @@ mod tests {
             "schemaVersion": 2,
             "modId": "com.test.hooks",
             "name": "Hook Test",
-            "version": "1.0.0",
-            "eflVersion": "1.0.0",
+            "version": "1.1.0",
+            "eflVersion": "1.1.0",
             "features": ["resources", "experimental_widgets"],
             "scriptHooks": [
                 {"target": "gml_Script_demo", "handler": "efl_resource_despawn", "mode": "callback"},
@@ -1796,8 +1796,8 @@ mod tests {
             "schemaVersion": 2,
             "modId": "com.test.calendar",
             "name": "Calendar Test",
-            "version": "1.0.0",
-            "eflVersion": "1.0.0",
+            "version": "1.1.0",
+            "eflVersion": "1.1.0",
             "features": ["calendar", "story"],
         });
         fs::write(
@@ -1964,7 +1964,7 @@ mod tests {
             json!([
                 {
                     "type": "requires",
-                    "target": { "kind": "momi", "id": "com.example.required-mod", "versionRange": ">=1.0.0" }
+                    "target": { "kind": "momi", "id": "com.example.required-mod", "versionRange": ">=1.1.0" }
                 }
             ]),
         );
@@ -2011,7 +2011,7 @@ mod tests {
             json!([
                 {
                     "type": "requires",
-                    "target": { "kind": "momi", "id": "com.example.any-mod", "versionRange": ">=1.0.0" }
+                    "target": { "kind": "momi", "id": "com.example.any-mod", "versionRange": ">=1.1.0" }
                 }
             ]),
         );

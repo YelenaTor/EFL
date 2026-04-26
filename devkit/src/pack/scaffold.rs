@@ -13,6 +13,7 @@ pub struct NewPackOptions {
     pub description: String,
     pub efl_version: String,
     pub features: Vec<String>,
+    pub uses_momi: bool,
 }
 
 /// Folders to create for each feature tag.
@@ -62,10 +63,16 @@ pub fn scaffold_pack(projects_dir: &Path, opts: &NewPackOptions) -> Result<PathB
         "schemaVersion": 2,
         "modId": opts.mod_id,
         "name": opts.display_name,
-        "version": if opts.version.is_empty() { "1.0.0" } else { &opts.version },
+        "version": if opts.version.is_empty() { "1.1.0" } else { &opts.version },
         "eflVersion": opts.efl_version,
         "features": opts.features,
     });
+
+    if opts.features.iter().any(|f| f == "areas") {
+        manifest["settings"] = serde_json::json!({
+            "areaBackend": "native"
+        });
+    }
 
     if !opts.author.is_empty() {
         manifest["author"] = serde_json::Value::String(opts.author.clone());
@@ -76,6 +83,41 @@ pub fn scaffold_pack(projects_dir: &Path, opts: &NewPackOptions) -> Result<PathB
 
     let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
     fs::write(pack_dir.join("manifest.efl"), manifest_bytes)?;
+
+    if opts.uses_momi {
+        let dat = serde_json::json!({
+            "schemaVersion": 1,
+            "datId": format!("{}.momi.compat", opts.mod_id),
+            "name": format!("{} MOMI Compatibility", opts.display_name),
+            "version": if opts.version.is_empty() { "1.1.0" } else { &opts.version },
+            "eflVersion": opts.efl_version,
+            "description": format!(
+                "Compatibility shim for {} when used with MOMI-provided content.",
+                opts.display_name
+            ),
+            "relationships": [
+                {
+                    "type": "requires",
+                    "target": {
+                        "kind": "efpack",
+                        "id": opts.mod_id,
+                        "versionRange": "^1.0"
+                    }
+                },
+                {
+                    "type": "optional",
+                    "target": {
+                        "kind": "momi",
+                        "id": "example.momi.mod",
+                        "versionRange": ">=1.1.0"
+                    },
+                    "reason": "Replace this placeholder with the MOMI mod your pack integrates with."
+                }
+            ]
+        });
+        let dat_name = format!("{}.MOMI.efdat", opts.mod_id);
+        fs::write(pack_dir.join(dat_name), serde_json::to_vec_pretty(&dat)?)?;
+    }
 
     Ok(pack_dir)
 }
@@ -110,10 +152,11 @@ mod tests {
             display_name: "Test Pack".into(),
             mod_id: mod_id.into(),
             author: "Yoru".into(),
-            version: "1.0.0".into(),
+            version: "1.1.0".into(),
             description: "".into(),
-            efl_version: "1.0.0".into(),
+            efl_version: "1.1.0".into(),
             features: features.iter().map(|s| s.to_string()).collect(),
+            uses_momi: false,
         }
     }
 
@@ -156,6 +199,28 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("com.test.mod")).unwrap();
         assert!(scaffold_pack(tmp.path(), &opts("com.test.mod", &[])).is_err());
+    }
+
+    #[test]
+    fn test_scaffold_areas_sets_native_backend() {
+        let tmp = TempDir::new().unwrap();
+        scaffold_pack(tmp.path(), &opts("com.test.mod", &["areas"])).unwrap();
+        let bytes = std::fs::read(tmp.path().join("com.test.mod").join("manifest.efl")).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["settings"]["areaBackend"].as_str().unwrap(), "native");
+    }
+
+    #[test]
+    fn test_scaffold_writes_momi_efdat_when_enabled() {
+        let tmp = TempDir::new().unwrap();
+        let mut o = opts("com.test.mod", &[]);
+        o.uses_momi = true;
+        scaffold_pack(tmp.path(), &o).unwrap();
+        assert!(tmp
+            .path()
+            .join("com.test.mod")
+            .join("com.test.mod.MOMI.efdat")
+            .exists());
     }
 
     #[test]
