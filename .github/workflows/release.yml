@@ -18,11 +18,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install doc build tools (Pandoc + XeLaTeX)
+      - name: Install doc build tools (Pandoc + wkhtmltopdf)
         shell: pwsh
         run: |
           choco install pandoc -y --no-progress
-          choco install miktex -y --no-progress
+          choco install wkhtmltopdf -y --no-progress
 
       - name: Cache cargo registry and build
         uses: actions/cache@v4
@@ -86,15 +86,15 @@ jobs:
           $DOC_OUT = Join-Path $env:RUNNER_TEMP "efl-release-pdf-docs"
           New-Item -ItemType Directory -Force -Path $DOC_OUT | Out-Null
 
-          pandoc docs/player/installing-content-packs.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Player_Guide.pdf")
+          pandoc docs/player/installing-content-packs.md --from gfm --pdf-engine=wkhtmltopdf -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Player_Guide.pdf")
 
-          pandoc docs/authoring/getting-started.md docs/authoring/content-types.md docs/authoring/manifest-reference.md docs/authoring/examples.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Authoring_Guide.pdf")
+          pandoc docs/authoring/getting-started.md docs/authoring/content-types.md docs/authoring/manifest-reference.md docs/authoring/examples.md --from gfm --pdf-engine=wkhtmltopdf -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Authoring_Guide.pdf")
 
-          pandoc docs/devkit/devkit-guide.md docs/devkit/diagnostic-codes.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_DevKit_Guide.pdf")
+          pandoc docs/devkit/devkit-guide.md docs/devkit/diagnostic-codes.md --from gfm --pdf-engine=wkhtmltopdf -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_DevKit_Guide.pdf")
 
-          pandoc docs/internals/architecture.md docs/internals/engine-bridge.md docs/internals/ipc-protocol.md docs/internals/save-format.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Internals_Reference.pdf")
+          pandoc docs/internals/architecture.md docs/internals/engine-bridge.md docs/internals/ipc-protocol.md docs/internals/save-format.md --from gfm --pdf-engine=wkhtmltopdf -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Internals_Reference.pdf")
 
-          pandoc docs/authoring/examples.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Example_Mod_Guide.pdf")
+          pandoc docs/authoring/examples.md --from gfm --pdf-engine=wkhtmltopdf -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Example_Mod_Guide.pdf")
 
           Get-ChildItem $DOC_OUT
           "PDF_DOC_DIR=$DOC_OUT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
