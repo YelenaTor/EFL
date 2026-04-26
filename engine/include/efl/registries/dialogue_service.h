@@ -13,7 +13,9 @@ namespace efl {
 
 struct DialogueEntry {
     std::string id;
-    std::string text;
+    std::string text;       // raw text (FoM markup supported: ^red^, $gold$, =orange=, #dark#)
+    std::string locKey;     // localisation key (e.g. "Conversations/Mods/<modId>/intro_01")
+                            // when set, FoM resolves this key via MOMI-injected localisation at runtime
     std::string portrait;
     std::string condition;  // empty = always shown, or "flag:name" for conditional
 };

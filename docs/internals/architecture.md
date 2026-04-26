@@ -6,7 +6,7 @@ EFL is organized into seven layers, each with a single responsibility. Dependenc
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  G  Tooling         schema validator, TUI, docs │
+│  G  Tooling         schema validator, DevKit, docs │
 ├─────────────────────────────────────────────────┤
 │  F  IPC             cross-mod channels          │
 ├─────────────────────────────────────────────────┤
@@ -29,7 +29,7 @@ Entry point for EFL. Handles:
 - `.efl` manifest discovery and parsing from the content directory
 - Capability resolution (which subsystems to initialize based on declared features)
 - Crash boundary — wraps initialization so a failing pack doesn't bring down the game
-- TUI pipe creation and lifecycle management
+- DevKit pipe creation and lifecycle management
 
 ### Layer B — Engine Bridge
 
@@ -74,14 +74,14 @@ The declarative JSON format that pack authors write. Not code — pure data defi
 ### Layer F — IPC
 
 Cross-mod communication:
-- **PipeWriter**: Writes JSON Lines to the named pipe for TUI consumption
+- **PipeWriter**: Writes JSON Lines to the named pipe for DevKit/runtime diagnostics consumption
 - **ChannelBroker**: Versioned pub/sub channels for mod-to-mod messaging, declared in manifests
 
 ### Layer G — Tooling
 
 Developer-facing tools (partially external to the DLL):
 - JSON Schema validation at load time
-- TUI monitor (separate Rust binary)
+- DevKit app (separate Rust binary)
 - Diagnostic code system
 
 ## Module List
@@ -108,12 +108,12 @@ Public EFL APIs are high-level and stable. All raw YYTK, Aurie, and GML details 
 
 1. **Aurie** loads `EFL.dll` and calls `ModuleInitialize`
 2. `EflBootstrap::initialize()` begins the boot sequence
-3. Named pipe is created for TUI communication
+3. Named pipe is created for DevKit communication
 4. Version check runs (EFL version logged)
 5. Content directory is scanned for `.efl` manifest files
 6. Each manifest is parsed and validated against the running EFL version
 7. For each valid manifest, content is loaded in dependency order: triggers first (so other systems can reference them), then areas, warps, resources, quests, NPCs, crafting, dialogue, events
-8. Boot status is emitted to the TUI pipe at each step
+8. Boot status is emitted to the DevKit pipe at each step
 9. Engine enters runtime mode — hooks are active, registries are populated
 
 ## Manifest-Driven Initialization

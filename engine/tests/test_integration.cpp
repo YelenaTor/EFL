@@ -38,8 +38,8 @@ TEST(Integration, LoadContentPack) {
     // Dialogue loaded
     EXPECT_NE(reg.dialogue().getDialogue("flora_intro"), nullptr);
 
-    // Event loaded
-    EXPECT_NE(reg.story().getEvent("crystal_cave_reveal"), nullptr);
+    // Cutscene trigger loaded
+    EXPECT_NE(reg.story().getCutscene("crystal_cave_reveal"), nullptr);
 }
 
 TEST(Integration, TriggerRegisteredFromPack) {

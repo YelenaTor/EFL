@@ -52,11 +52,13 @@ TEST(ResourceRegistry, DungeonVotesParsed) {
     const auto& v0 = res->spawnRules.dungeonVotes[0];
     EXPECT_EQ(v0.biome, "upper_mines");
     EXPECT_EQ(v0.pool, "ore_rock");
+    EXPECT_EQ(v0.objectId, "node_mythril");
     EXPECT_EQ(v0.weight, 5);
 
     const auto& v1 = res->spawnRules.dungeonVotes[1];
     EXPECT_EQ(v1.biome, "tide_caverns");
     EXPECT_EQ(v1.pool, "ore_rock");  // default
+    EXPECT_EQ(v1.objectId, "");       // default (empty — no spawn without objectId)
     EXPECT_EQ(v1.weight, 1);          // default
 }
 

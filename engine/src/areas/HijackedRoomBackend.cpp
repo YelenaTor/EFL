@@ -104,14 +104,14 @@ void HijackedRoomBackend::activate(const AreaDef& area) {
     }
 
     if (!area.entryEvent.empty()) {
-        story_.fireEvent(area.entryEvent, triggers_);
+        story_.fireEffects(area.entryEvent, triggers_);
     }
     pendingExitEvent_ = area.exitEvent;
 }
 
 void HijackedRoomBackend::deactivate() {
     if (!pendingExitEvent_.empty()) {
-        story_.fireEvent(pendingExitEvent_, triggers_);
+        story_.fireEffects(pendingExitEvent_, triggers_);
         pendingExitEvent_.clear();
     }
 }

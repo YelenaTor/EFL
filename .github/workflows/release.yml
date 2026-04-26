@@ -18,18 +18,24 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install doc build tools (Pandoc + XeLaTeX)
+        shell: pwsh
+        run: |
+          choco install pandoc -y --no-progress
+          choco install miktex -y --no-progress
+
       - name: Cache cargo registry and build
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tui/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('tui/Cargo.lock') }}
+            devkit/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('devkit/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build DevKit (release)
-        working-directory: tui
+        working-directory: devkit
         run: cargo build --release
 
       - name: Configure CMake
@@ -44,11 +50,54 @@ jobs:
         working-directory: engine/build
         run: ctest -C Release --output-on-failure
 
-      - name: Generate V2 documentation PDFs
+      - name: DevKit unit tests
+        working-directory: devkit
+        run: cargo test --lib --release
+
+      - name: Pack example via efl-pack CLI (smoke)
         shell: bash
         run: |
-          pip install reportlab --quiet
-          python .temp/gen_pdfs.py
+          set -euo pipefail
+          STAGE_OUT="${RUNNER_TEMP}/efl-release-pack-out"
+          mkdir -p "${STAGE_OUT}"
+          ./devkit/target/release/efl-pack.exe examples/hello_adventurer \
+            --profile recommended \
+            --output "${STAGE_OUT}"
+          ART=$(find "${STAGE_OUT}" -name "*.efpack" -type f -size +0 | head -n 1)
+          if [ -z "${ART}" ]; then
+            echo "release: no .efpack artifact produced" >&2
+            exit 1
+          fi
+          echo "EFPACK_SMOKE_ARTIFACT=${ART}" >> "${GITHUB_ENV}"
+
+          ./devkit/target/release/efl-pack.exe examples/hello_compat \
+            --profile recommended \
+            --output "${STAGE_OUT}"
+          DAT=$(find "${STAGE_OUT}" -name "*.efdat" -type f -size +0 | head -n 1)
+          if [ -z "${DAT}" ]; then
+            echo "release: no .efdat artifact produced" >&2
+            exit 1
+          fi
+          echo "EFDAT_SMOKE_ARTIFACT=${DAT}" >> "${GITHUB_ENV}"
+
+      - name: Build PDF docs for release package
+        shell: pwsh
+        run: |
+          $DOC_OUT = Join-Path $env:RUNNER_TEMP "efl-release-pdf-docs"
+          New-Item -ItemType Directory -Force -Path $DOC_OUT | Out-Null
+
+          pandoc docs/player/installing-content-packs.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Player_Guide.pdf")
+
+          pandoc docs/authoring/getting-started.md docs/authoring/content-types.md docs/authoring/manifest-reference.md docs/authoring/examples.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Authoring_Guide.pdf")
+
+          pandoc docs/devkit/devkit-guide.md docs/devkit/diagnostic-codes.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_DevKit_Guide.pdf")
+
+          pandoc docs/internals/architecture.md docs/internals/engine-bridge.md docs/internals/ipc-protocol.md docs/internals/save-format.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Internals_Reference.pdf")
+
+          pandoc docs/authoring/examples.md --from gfm --pdf-engine=xelatex -V geometry:margin=1in -o (Join-Path $DOC_OUT "EFL_Example_Mod_Guide.pdf")
+
+          Get-ChildItem $DOC_OUT
+          "PDF_DOC_DIR=$DOC_OUT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Package Player zip
         shell: bash
@@ -69,19 +118,33 @@ jobs:
           DOCS="${STAGE}/Docs"
           mkdir -p "${DEVKIT}" "${DOCS}"
 
-          # DevKit app
+          # DevKit app + headless CLI
           cp engine/build/bin/Release/EFL.dll "${DEVKIT}/" 2>/dev/null || true
-          cp tui/target/release/efl-devkit.exe "${DEVKIT}/" 2>/dev/null || true
+          cp devkit/target/release/efl-devkit.exe "${DEVKIT}/" 2>/dev/null || true
+          cp devkit/target/release/efl-pack.exe   "${DEVKIT}/" 2>/dev/null || true
 
-          # V2 documentation
-          cp .temp/docs/EFL_Player_Guide.pdf       "${DOCS}/"
-          cp .temp/docs/EFL_Authoring_Guide.pdf    "${DOCS}/"
-          cp .temp/docs/EFL_DevKit_Guide.pdf       "${DOCS}/"
-          cp .temp/docs/EFL_Internals_Reference.pdf "${DOCS}/"
-          cp .temp/docs/EFL_Example_Mod_Guide.pdf  "${DOCS}/"
+          # Documentation (PDF release docs)
+          cp "${PDF_DOC_DIR}/EFL_Player_Guide.pdf"        "${DOCS}/"
+          cp "${PDF_DOC_DIR}/EFL_Authoring_Guide.pdf"     "${DOCS}/"
+          cp "${PDF_DOC_DIR}/EFL_DevKit_Guide.pdf"        "${DOCS}/"
+          cp "${PDF_DOC_DIR}/EFL_Internals_Reference.pdf" "${DOCS}/"
+          cp "${PDF_DOC_DIR}/EFL_Example_Mod_Guide.pdf"   "${DOCS}/"
+
+          # Schemas as a single zip (not raw folder)
+          7z a "${STAGE}/schemas.zip" "schemas/*"
+          cp release/devkit/SCHEMAS.txt "${STAGE}/"
+
+          # Example workspace(s) + prebuilt artifacts
+          mkdir -p "${STAGE}/examples"
+          cp -r examples/hello_adventurer "${STAGE}/examples/hello_adventurer"
+          mkdir -p "${STAGE}/examples/prebuilt"
+          if [ -n "${EFPACK_SMOKE_ARTIFACT:-}" ] && [ -f "${EFPACK_SMOKE_ARTIFACT}" ]; then
+            cp "${EFPACK_SMOKE_ARTIFACT}" "${STAGE}/examples/prebuilt/" || true
+          fi
 
           # Usage guide
           cp release/devkit/USAGE.txt "${STAGE}/"
+          cp release/devkit/GETTING_STARTED.txt "${STAGE}/"
 
           7z a "EFL-DevKit-${VERSION}.zip" "${STAGE}"
 
@@ -96,13 +159,13 @@ jobs:
 
             ### Downloads
 
-            - **EFL-${{ github.ref_name }}.zip** — For players: EFL.dll + install guide
-            - **EFL-DevKit-${{ github.ref_name }}.zip** — For mod authors: EFL.dll + DevKit app + full V2 documentation
+            - **EFL-${{ github.ref_name }}.zip** — User package: EFL.dll + drag-and-drop install guide
+            - **EFL-DevKit-${{ github.ref_name }}.zip** — Developer package: EFL.dll + portable DevKit + schemas.zip + example mod + PDF docs
 
             ### Player Install
             Drop `EFL.dll` into `<game>\mods\aurie\` and content packs into `<game>\mods\efl\`.
             See `INSTALL.txt` for step-by-step instructions.
 
             ### Mod Author Install
-            See `EFL DevKit\` folder for the GUI tool and `Docs\EFL_DevKit_Guide.pdf` for usage.
-            Start with `Docs\EFL_Authoring_Guide.pdf` to build your first content pack.
+            See `EFL DevKit\` folder for the GUI tool and `GETTING_STARTED.txt` to get going.
+            Full documentation is in `Docs\` as PDF guides.

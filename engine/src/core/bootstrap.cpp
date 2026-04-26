@@ -1,8 +1,10 @@
 #include "efl/core/bootstrap.h"
 #include "efl/core/efpack_loader.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <thread>
 #include <unordered_set>
@@ -43,6 +45,61 @@ std::string buildPipeName() {
     return "\\\\.\\pipe\\efl-" + std::to_string(pid);
 }
 
+std::string buildCommandPipeName() {
+#ifdef _WIN32
+    DWORD pid = GetCurrentProcessId();
+#else
+    int pid = 0;
+#endif
+    return "\\\\.\\pipe\\efl-" + std::to_string(pid) + "-cmd";
+}
+
+// What this engine build accepts as scriptHook handler ids. Kept in sync with
+// `kBuiltinHandlers` inside `stepValidateScriptHooks`. Surfaced via
+// `capabilities.snapshot` so the DevKit validator can lint against the live
+// runtime instead of its own embedded whitelist.
+const std::vector<std::string>& builtinScriptHookHandlers() {
+    static const std::vector<std::string> kHandlers = {
+        "efl_resource_despawn",
+    };
+    return kHandlers;
+}
+
+// Feature tags this engine build understands at runtime. Mirrors the manifest
+// `features` enum; flags below clarify which features are wired vs. stubbed.
+const std::vector<std::string>& supportedFeatureTags() {
+    static const std::vector<std::string> kFeatures = {
+        "areas", "warps", "npcs", "resources", "crafting", "quests",
+        "dialogue", "story", "triggers", "assets", "ipc", "calendar",
+    };
+    return kFeatures;
+}
+
+// Hook kinds the bridge can register today. Used by the DevKit to gate
+// scriptHook UI / diagnostics against the engine's actual reach.
+const std::vector<std::string>& supportedHookKinds() {
+    static const std::vector<std::string> kKinds = {
+        "yyc_script", "frame", "detour",
+    };
+    return kKinds;
+}
+
+// Sparse capability flags. `false` means "feature accepted by manifest /
+// schema but not yet wired through the bridge". The DevKit shows these
+// alongside the validator output so authors know what's runtime-truth vs.
+// future-work.
+nlohmann::json buildCapabilityFlags() {
+    return nlohmann::json{
+        {"dungeonVoteInjection", false},
+        {"worldNpcSchedules", false},
+        {"nativeRoomBackend", false},
+        {"assetInjection", false},
+        {"scriptHookCallbacks", true},
+        {"scriptHookInject", false},
+        {"calendarRegistry", true},
+    };
+}
+
 } // anonymous namespace
 
 EflBootstrap::EflBootstrap() = default;
@@ -68,9 +125,28 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
         }
     }
 
-    // Create the named pipe for TUI communication
+    // Create the named pipe for DevKit communication
     pipe_ = std::make_unique<PipeWriter>(buildPipeName());
     pipe_->create(); // Best-effort; bootstrap continues even if pipe fails
+
+    // Inbound command pipe (DevKit -> engine). Best-effort: if it fails to
+    // bind we log once and continue without explicit reload signaling.
+    commandPipe_ = std::make_unique<CommandPipeListener>(buildCommandPipeName());
+    if (!commandPipe_->start([this](const CommandMessage& cmd) { handleCommand(cmd); })) {
+        diagnostics_.emit("RELOAD-W002", Severity::Warning, "BOOT",
+                          "Command pipe failed to start: " + commandPipe_->pipeName(),
+                          "DevKit reload signaling will fall back to file watching");
+        commandPipe_.reset();
+    } else {
+        log_.info("BOOT", "Command pipe ready: " + commandPipe_->pipeName());
+        if (pipe_) {
+            pipe_->write("command_pipe.ready", nlohmann::json{
+                {"name", commandPipe_->pipeName()},
+                {"protocol", "json-lines"},
+                {"version", 1}
+            });
+        }
+    }
 
     // Wire pipe to services for IPC message emission
     diagnostics_.setPipeWriter(pipe_.get());
@@ -124,6 +200,18 @@ bool EflBootstrap::initialize(const std::string& contentDir) {
     if (pipe_) {
         pipe_->write("phase.transition", nlohmann::json{
             {"phase", "boot"}, {"status", "complete"}});
+
+        // Broadcast what this engine build actually supports so connected
+        // DevKits can swap their static handler/feature whitelists for the
+        // live snapshot. The DevKit treats absent fields as "use embedded
+        // defaults", so this stays additive.
+        pipe_->write("capabilities.snapshot", nlohmann::json{
+            {"eflVersion", eflVersionString()},
+            {"handlers", builtinScriptHookHandlers()},
+            {"features", supportedFeatureTags()},
+            {"hookKinds", supportedHookKinds()},
+            {"flags", buildCapabilityFlags()},
+        });
     }
 
     // Load per-mod config from <contentDir>/config.json (silent no-op if missing)
@@ -186,7 +274,7 @@ bool EflBootstrap::initialize(const std::string& contentDir,
 
         if (backendType == "native") {
             roomBackend_ = std::make_unique<NativeRoomBackend>(
-                *instanceWalker_, *routineInvoker_, pipe_.get(),
+                *instanceWalker_, *routineInvoker_, *roomTracker_, pipe_.get(),
                 log_, events_,
                 registries_.npcs(), registries_.story(),
                 registries_.triggers(), diagnostics_);
@@ -213,6 +301,22 @@ bool EflBootstrap::initialize(const std::string& contentDir,
                 {"state", "active"}});
         }
     };
+    registries_.story().onItemGrant = [this](int itemId, int qty) {
+        grantItem(itemId, qty);
+        if (pipe_) {
+            pipe_->write("item.granted", nlohmann::json{
+                {"itemId", itemId}, {"qty", qty}, {"source", "cutscene"}});
+        }
+    };
+
+    registries_.quests().onItemGrant = [this](int itemId, int qty) {
+        grantItem(itemId, qty);
+        if (pipe_) {
+            pipe_->write("item.granted", nlohmann::json{
+                {"itemId", itemId}, {"qty", qty}, {"source", "quest_reward"}});
+        }
+    };
+
     registries_.story().onQuestAdvance = [this](const std::string& questId) {
         std::string stageBefore = registries_.quests().getCurrentStage(questId);
         // completeStage requires the current stage ID; derive it from the registry.
@@ -227,6 +331,30 @@ bool EflBootstrap::initialize(const std::string& contentDir,
                 {"questId", questId}, {"action", "advance"},
                 {"prevStage", stageBefore},
                 {"currentStage", stageAfter.empty() ? "complete" : stageAfter}});
+        }
+    };
+
+    // Wire WorldNpc schedule change callback.
+    // Fires when tickSchedule detects a boundary crossing mid-day.
+    // If the NPC's new area is in the current room, spawn (or teleport) there.
+    // If not, despawn any existing instance.
+    registries_.worldNpcs().onScheduleChange = [this](const std::string& npcId,
+                                                       const std::string& newAreaId,
+                                                       const std::string& newAnchorId) {
+        const WorldNpcDef* def = registries_.worldNpcs().getWorldNpc(npcId);
+        if (!def) return;
+
+        const AreaDef* newArea = newAreaId.empty() ? nullptr : registries_.areas().getArea(newAreaId);
+        std::string currentRoom = roomTracker_->currentRoomName();
+        bool inCurrentRoom = newArea &&
+                             !newArea->hostRoom.empty() &&
+                             newArea->hostRoom == currentRoom;
+
+        if (inCurrentRoom) {
+            // Spawn at new anchor (despawns existing instance first if present).
+            spawnWorldNpc(*def, newAreaId, newAnchorId);
+        } else {
+            despawnWorldNpc(npcId);
         }
     };
 
@@ -284,12 +412,17 @@ void EflBootstrap::stepRegisterHooks() {
                           "Room grid setup may not work");
     }
 
-    // Frame callback for room tracking + trigger evaluation + hot-reload drain (MUST)
+    // Frame callback for room tracking + hot-reload (MUST)
     if (hooks_->registerFrameCallback("frame_update", [this]() {
                 roomTracker_->update();
                 hotReload_.drainQueue();
-                // TODO: pass real FoM time when time hook is wired (Phase 6+)
-                registries_.worldNpcs().tickSchedule(0);
+                if (commandPipe_)
+                    commandPipe_->drainQueue();
+                // WorldNpc schedule tick — read actual game time and detect boundary crossings.
+                // readGameTime() returns -1 if Calendar is not yet initialised (early frames).
+                int64_t t = readGameTime();
+                if (t >= 0)
+                    registries_.worldNpcs().tickSchedule(static_cast<int>(t % 86400));
             })) {
         log_.info("HOOK", "Registered: frame_update");
         emitBootStatus("hook.registered", "pass", "frame_update");
@@ -300,13 +433,69 @@ void EflBootstrap::stepRegisterHooks() {
                           "Room tracking will not function");
     }
 
-    // Resource node hooks (SHOULD — graceful degradation)
+    // Resource node hooks — yield roll + harvest tracking (SHOULD — graceful degradation)
     for (const auto& hookName : {"pick_node", "hoe_node", "water_node"}) {
         std::string target = std::string("gml_Script_") + hookName;
         if (hooks_->registerScriptHook(hookName, target,
-                [this, hookName](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
+                [this, hookName](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode*,
                        int, YYTK::RValue*) {
-                    log_.info("HOOK", std::string("Resource node interaction: ") + hookName);
+                    // Read the FoM instance position and map to grid coords.
+                    double px = 0.0, py = 0.0;
+                    try {
+                        px = instanceWalker_->getVariable(self, "x").m_Real;
+                        py = instanceWalker_->getVariable(self, "y").m_Real;
+                    } catch (...) { return; }
+                    int gx = static_cast<int>(px / 32.0);
+                    int gy = static_cast<int>(py / 32.0);
+
+                    // Find the EFL resource at this grid position in the current room.
+                    std::string currentRoom = roomTracker_->currentRoomName();
+                    auto areas = registries_.areas().areasByHostRoom(currentRoom);
+                    const ResourceDef* hit = nullptr;
+                    std::string hitArea;
+                    for (const auto* area : areas) {
+                        for (const auto* res : registries_.resources().resourcesInArea(area->id)) {
+                            auto it = res->spawnRules.anchors.find(area->id);
+                            if (it != res->spawnRules.anchors.end()) {
+                                const auto [rx, ry] = it->second;
+                                if (rx == gx && ry == gy) { hit = res; hitArea = area->id; break; }
+                            }
+                        }
+                        if (hit) break;
+                    }
+
+                    if (!hit || hit->yieldTable.empty()) {
+                        log_.info("HOOK", std::string("Node interaction (no EFL resource): ") + hookName);
+                        return;
+                    }
+
+                    // Roll yield from yieldTable.
+                    const auto& entry = hit->yieldTable[
+                        std::uniform_int_distribution<size_t>(
+                            0, hit->yieldTable.size() - 1)(rng_)];
+                    int qty = std::uniform_int_distribution<int>(entry.min, entry.max)(rng_);
+
+                    // Record harvest day for respawn tracking.
+                    harvestedAt_[hit->id] = currentDay_;
+
+                    log_.info("RESOURCE", "Harvested " + hit->id
+                              + ": " + entry.item + " x" + std::to_string(qty)
+                              + " [" + std::string(hookName) + "]");
+
+                    // Grant the harvested item if a numeric FoM item index is available.
+                    if (entry.itemId > 0) {
+                        grantItem(entry.itemId, qty);
+                    } else {
+                        log_.info("RESOURCE", "No itemId on yield entry '" + entry.item
+                                  + "' — harvest logged but item not granted");
+                    }
+                    if (pipe_) {
+                        pipe_->write("resource.harvested", nlohmann::json{
+                            {"resourceId", hit->id}, {"areaId", hitArea},
+                            {"item", entry.item}, {"itemId", entry.itemId},
+                            {"quantity", qty},
+                            {"tool", std::string(hookName)}});
+                    }
                 })) {
             log_.info("HOOK", std::string("Registered: ") + hookName);
             emitBootStatus("hook.registered", "pass", hookName);
@@ -332,10 +521,10 @@ void EflBootstrap::stepRegisterHooks() {
                 [this, sh](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
                             int, YYTK::RValue*) {
                     log_.info("HOOK", "Script hook fired: " + sh.handler + " @ " + sh.target);
-                    // v2.4: real resource spawn/despawn logic wired here
                     diagnostics_.emit("RESOURCE-H001", Severity::Hazard, "RESOURCE",
-                                     "efl_resource_despawn stub — not yet implemented",
-                                     "Resource spawning is wired in v2.4");
+                                     "Manifest-declared efl_resource_despawn hook fired but dispatch is not wired",
+                                     "Standard resource interactions via hoe/pick/water node hooks are active. "
+                                     "Manifest-declared custom-target dispatch is a V2.5 feature.");
                 });
             log_.info("HOOK", "Registered manifest hook: " + sh.target + " -> " + sh.handler);
         }
@@ -377,44 +566,274 @@ void EflBootstrap::stepRegisterHooks() {
         }
     }
 
-    // Dungeon vote injection — add EFL nodes to FoM biome vote pools (v2.4+)
-    // gml_Script_create_node_prototypes fires once per room on grid init (confirmed).
-    // Vote-table mutation API: gml_Script_register_node@Anchor@Anchor (confirmed).
-    // Arg: single GML struct. Struct field layout requires further probing before
-    // callGameScript can be used — a dedicated probe session is needed to inspect
-    // the struct that FoM's own node types pass in.
+    // Dungeon vote injection — add EFL nodes to FoM biome vote pools (RESOURCE-H002)
+    //
+    // Architecture (confirmed via __fiddle__.json + Ghidra analysis):
+    //   FoM loads dungeons/dungeons/biomes[N].votes.POOL from __fiddle__.json at startup.
+    //   Each biome (0=Upper Mines/floor1, 1=Tide Caverns/20, 2=Deep Earth/40,
+    //   3=Lava Caves/60, 4=Ancient Ruins/80) has a votes struct with named pools.
+    //   Pool entry format: {object: "gml_obj_id", votes: N} (integer weight).
+    //   Pool names: "ore_rock", "small_rock", "seam_rock", "large_rock", "enemy",
+    //               "fish", "bug", "forageable", "breakable", "chest", "junk", etc.
+    //
+    // Injection strategy:
+    //   Hook gml_Script_load_dungeon (post-call) — fires once when dungeon data is
+    //   populated from fiddle. Navigate: self -> biomes[N] -> votes -> pool_arr,
+    //   then array_push({object, votes}) into the live GML array.
+    //
+    //   The biomes array path on self is discovered at runtime via property enumeration
+    //   (self.biomes or self.dungeon.biomes). Property names are logged on first fire
+    //   so the injection path can be verified or corrected without re-analysis.
     if (!registries_.resources().resourcesWithDungeonVotes().empty()) {
-        if (hooks_->registerScriptHook(
-                "efl_dungeon_vote_inject", "gml_Script_create_node_prototypes",
-                [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*,
+        bool hooked = hooks_->registerScriptHook(
+                "efl_dungeon_vote_inject", "gml_Script_load_dungeon",
+                [this](YYTK::CInstance* self, YYTK::CInstance*, YYTK::CCode*,
                        int, YYTK::RValue*) {
+                    static bool fired = false;
+                    if (fired) return;
+                    fired = true;
+
                     auto candidates = registries_.resources().resourcesWithDungeonVotes();
+                    if (candidates.empty()) return;
+
+                    // Build a VALUE_OBJECT RValue from the CInstance* for struct ops.
+                    YYTK::RValue selfRv;
+                    selfRv.m_Kind   = YYTK::VALUE_OBJECT;
+                    selfRv.m_Object = reinterpret_cast<YYTK::YYObjectBase*>(self);
+
+                    // Log self's property names once for runtime diagnosis.
+                    try {
+                        YYTK::RValue namesArr = routineInvoker_->callBuiltin(
+                            "variable_struct_get_names", {selfRv});
+                        YYTK::RValue lenRv = routineInvoker_->callBuiltin(
+                            "array_length", {namesArr});
+                        int n = (lenRv.m_Kind == YYTK::VALUE_REAL)  ? static_cast<int>(lenRv.m_Real)
+                              : (lenRv.m_Kind == YYTK::VALUE_INT32) ? lenRv.m_i32 : 0;
+                        std::string propList;
+                        for (int i = 0; i < n && i < 32; ++i) {
+                            YYTK::RValue iRv;
+                            iRv.m_Kind = YYTK::VALUE_REAL;
+                            iRv.m_Real = static_cast<double>(i);
+                            YYTK::RValue nameRv = routineInvoker_->callBuiltin(
+                                "array_get", {namesArr, iRv});
+                            if (i > 0) propList += ", ";
+                            propList += nameRv.ToString();
+                        }
+                        log_.info("RESOURCE", "load_dungeon self props: " + propList);
+                    } catch (...) {
+                        log_.warn("RESOURCE", "load_dungeon: self property enumeration failed");
+                    }
+
+                    // Locate the biomes array: try self.biomes, then self.dungeon.biomes.
+                    auto getField = [&](const YYTK::RValue& obj, const char* name) {
+                        return routineInvoker_->callBuiltin("variable_struct_get",
+                            {obj, YYTK::RValue(name)});
+                    };
+
+                    YYTK::RValue biomesArr = getField(selfRv, "biomes");
+                    if (biomesArr.m_Kind != YYTK::VALUE_ARRAY) {
+                        YYTK::RValue dungeonRv = getField(selfRv, "dungeon");
+                        if (dungeonRv.m_Kind == YYTK::VALUE_OBJECT)
+                            biomesArr = getField(dungeonRv, "biomes");
+                    }
+
+                    if (biomesArr.m_Kind != YYTK::VALUE_ARRAY) {
+                        log_.warn("RESOURCE", "RESOURCE-H002: biomes array not found in "
+                            "load_dungeon self — see self props above; injection skipped");
+                        diagnostics_.emit("RESOURCE-H002", Severity::Hazard, "RESOURCE",
+                            "Dungeon vote injection: biomes array not found at runtime",
+                            "load_dungeon self did not expose self.biomes or self.dungeon.biomes; "
+                            "check self prop log for correct path");
+                        return;
+                    }
+
+                    // Confirmed biome name -> index from __fiddle__.json
+                    static const std::unordered_map<std::string, int> kBiomeIdx = {
+                        {"upper_mines", 0}, {"tide_caverns", 1}, {"deep_earth", 2},
+                        {"lava_caves",  3}, {"ancient_ruins", 4}
+                    };
+
+                    int injected = 0;
                     for (const auto* res : candidates) {
                         for (const auto& vote : res->spawnRules.dungeonVotes) {
-#ifndef EFL_STUB_SDK
-                            // TODO(RESOURCE-H002): call register_node@Anchor@Anchor once
-                            // struct arg layout is confirmed. Script name is verified;
-                            // struct fields (kind, biome, pool, weight) need probe output.
-                            // e.g. routineInvoker_->callGameScript(
-                            //     "gml_Script_register_node@Anchor@Anchor",
-                            //     { <node_prototype_struct> });
-                            log_.warn("RESOURCE", "Dungeon vote pending struct probe: "
-                                + res->id + " -> " + vote.biome + "/" + vote.pool);
-#else
-                            log_.info("RESOURCE", "Stub: dungeon vote for " + res->id
-                                      + " biome=" + vote.biome
-                                      + " pool=" + vote.pool
-                                      + " weight=" + std::to_string(vote.weight));
-#endif
+                            if (vote.objectId.empty()) {
+                                log_.warn("RESOURCE", res->id + ": dungeonVote missing objectId — skipped");
+                                continue;
+                            }
+                            auto biomeIt = kBiomeIdx.find(vote.biome);
+                            if (biomeIt == kBiomeIdx.end()) {
+                                log_.warn("RESOURCE", res->id + ": unknown biome '" + vote.biome + "' — skipped");
+                                continue;
+                            }
+                            try {
+                                YYTK::RValue biomeIdxRv;
+                                biomeIdxRv.m_Kind = YYTK::VALUE_REAL;
+                                biomeIdxRv.m_Real = static_cast<double>(biomeIt->second);
+
+                                YYTK::RValue biomeRv = routineInvoker_->callBuiltin(
+                                    "array_get", {biomesArr, biomeIdxRv});
+                                if (biomeRv.m_Kind != YYTK::VALUE_OBJECT) {
+                                    log_.warn("RESOURCE", "biomes[" + vote.biome + "] is not a struct");
+                                    continue;
+                                }
+
+                                YYTK::RValue votesRv = getField(biomeRv, "votes");
+                                if (votesRv.m_Kind != YYTK::VALUE_OBJECT) {
+                                    log_.warn("RESOURCE", "biomes[" + vote.biome + "].votes is not a struct");
+                                    continue;
+                                }
+
+                                YYTK::RValue poolArr = routineInvoker_->callBuiltin("variable_struct_get",
+                                    {votesRv, YYTK::RValue(vote.pool.c_str())});
+                                if (poolArr.m_Kind != YYTK::VALUE_ARRAY) {
+                                    log_.warn("RESOURCE", "votes." + vote.pool + " is not an array in biome "
+                                              + vote.biome);
+                                    continue;
+                                }
+
+                                YYTK::RValue weightRv;
+                                weightRv.m_Kind = YYTK::VALUE_REAL;
+                                weightRv.m_Real = static_cast<double>(vote.weight);
+                                YYTK::RValue entryRv(std::map<std::string, YYTK::RValue>{
+                                    {"object", YYTK::RValue(vote.objectId.c_str())},
+                                    {"votes",  weightRv}
+                                });
+
+                                routineInvoker_->callBuiltin("array_push", {poolArr, entryRv});
+
+                                log_.info("RESOURCE", "vote injected: " + res->id
+                                    + " biome=" + vote.biome + " pool=" + vote.pool
+                                    + " object=" + vote.objectId
+                                    + " weight=" + std::to_string(vote.weight));
+                                ++injected;
+                            } catch (const std::exception& ex) {
+                                log_.warn("RESOURCE", "Vote inject failed: " + res->id
+                                    + " biome=" + vote.biome + ": " + ex.what());
+                            }
                         }
                     }
-                })) {
-            log_.info("HOOK", "Registered: efl_dungeon_vote_inject (create_node_prototypes)");
+
+                    if (injected > 0) {
+                        log_.info("RESOURCE", "RESOURCE-H002: " + std::to_string(injected)
+                                  + " dungeon vote(s) injected");
+                        if (pipe_) pipe_->write("resource.dungeon_votes_injected",
+                                                nlohmann::json{{"count", injected}});
+                    }
+                });
+        if (hooked) {
+            log_.info("HOOK", "Registered: efl_dungeon_vote_inject (load_dungeon)");
             emitBootStatus("hook.registered", "pass", "efl_dungeon_vote_inject");
         } else {
             diagnostics_.emit("RESOURCE-W001", Severity::Warning, "RESOURCE",
                 "Failed to register dungeon vote hook",
                 "EFL resource nodes will not appear in FoM dungeon floors");
+        }
+    }
+
+    // Cutscene system hooks (StoryBridge — V2)
+    //
+    // load_cutscenes [3962] — fires once at boot when Mist reads __mist__.json.
+    // EFL uses this as a signal that FoM's cutscene table is ready; logs registered
+    // EFL cutscene keys to IPC so DevKit can show them.
+    bool hasStory = std::any_of(manifests_.begin(), manifests_.end(),
+                                [](const auto& m) { return m.features.story; });
+    if (hasStory) {
+        if (hooks_->registerScriptHook(
+                "efl_load_cutscenes", "gml_Script_load_cutscenes",
+                [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*, int, YYTK::RValue*) {
+                    registries_.story().onLoadCutscenes();
+                    log_.info("STORY", "load_cutscenes fired — EFL cutscene keys registered");
+                })) {
+            log_.info("HOOK", "Registered: efl_load_cutscenes");
+            emitBootStatus("hook.registered", "pass", "efl_load_cutscenes");
+        } else {
+            diagnostics_.emit("STORY-W001", Severity::Warning, "STORY",
+                "Failed to register load_cutscenes hook",
+                "EFL cutscene keys will not be reported to DevKit at boot");
+        }
+
+        // check_cutscene_eligible [3964] — fires every day (AM scan + end-of-day scan).
+        // Probe confirmed: argc=1 (key string) in AM scan, argc=2 (key, bool) at EOD.
+        // EFL intercepts calls for its own keys and returns true when trigger conditions
+        // are met; falls through to FoM's original check for all other keys.
+        if (hooks_->registerInterceptHook(
+                "efl_cutscene_eligible",
+                "gml_Script_check_cutscene_eligible@Mist@Mist",
+                [this](YYTK::RValue& result, int argc, YYTK::RValue** args) -> bool {
+                    if (argc < 1 || !args[0]) return false;
+                    std::string key = args[0]->ToString();
+                    if (!registries_.story().evaluateEligibility(key, registries_.triggers()))
+                        return false;
+                    // EFL commits this cutscene: return true to FoM.
+                    result.m_Kind = YYTK::VALUE_BOOL;
+                    result.m_i32  = 1;
+                    log_.info("STORY", "Cutscene eligible (EFL): " + key);
+                    return true;
+                })) {
+            log_.info("HOOK", "Registered: efl_cutscene_eligible (check_cutscene_eligible)");
+            emitBootStatus("hook.registered", "pass", "efl_cutscene_eligible");
+        } else {
+            diagnostics_.emit("STORY-E002", Severity::Error, "STORY",
+                "Failed to register check_cutscene_eligible hook",
+                "EFL cutscenes will never be triggered in-game");
+        }
+
+        // new_day [4124] — fires at the start of each in-game day, argc=0.
+        // Probe confirmed: fires after the sleep fade, before FoM's own write_node calls.
+        // EFL uses this to drive accurate day-based resource respawn.
+        if (hooks_->registerScriptHook("efl_new_day", "gml_Script_new_day",
+                [this](YYTK::CInstance*, YYTK::CInstance*, YYTK::CCode*, int, YYTK::RValue*) {
+                    currentDay_++;
+
+                    // Check for season change (probe B: season() returns 0-3).
+                    int newSeason = readSeason();
+                    bool seasonChanged = (newSeason != currentSeason_ && currentSeason_ != -1);
+                    if (newSeason >= 0) currentSeason_ = newSeason;
+
+                    log_.info("RESOURCE", "New day " + std::to_string(currentDay_)
+                              + ", season=" + std::to_string(currentSeason_)
+                              + (seasonChanged ? " (season changed)" : ""));
+
+                    // Respawn daily resources whose threshold has elapsed.
+                    // Respawn seasonal resources when the season turns.
+                    for (auto it = harvestedAt_.begin(); it != harvestedAt_.end(); ) {
+                        const ResourceDef* res = registries_.resources().getResource(it->first);
+                        if (!res) { it = harvestedAt_.erase(it); continue; }
+
+                        const auto& policy = res->spawnRules.respawnPolicy;
+                        bool shouldRespawn = false;
+                        if (policy == "seasonal") {
+                            shouldRespawn = seasonChanged;
+                        } else {
+                            uint64_t days = respawnThresholdDays(policy);
+                            shouldRespawn = (days > 0 && (currentDay_ - it->second) >= days);
+                        }
+
+                        if (!shouldRespawn) { ++it; continue; }
+
+                        for (const auto& [areaId, _] : res->spawnRules.anchors)
+                            spawnResourceNode(*res, areaId);
+
+                        log_.info("RESOURCE", "Respawned: " + res->id);
+                        it = harvestedAt_.erase(it);
+                    }
+
+                    // V3 pilot: dispatch any calendar events that match today.
+                    // Skipped silently when the registry is empty (no per-pack
+                    // 'calendar' feature declared) so the cost stays at zero.
+                    if (!registries_.calendar().allEvents().empty()) {
+                        int dayOfSeason = readDayOfSeason();
+                        if (currentSeason_ >= 0 && dayOfSeason >= 1) {
+                            fireCalendarEvents(currentSeason_, dayOfSeason);
+                        }
+                    }
+                })) {
+            log_.info("HOOK", "Registered: efl_new_day");
+            emitBootStatus("hook.registered", "pass", "efl_new_day");
+        } else {
+            diagnostics_.emit("RESOURCE-W002", Severity::Warning, "RESOURCE",
+                "Failed to register new_day hook",
+                "EFL resource respawn will not fire on day change");
         }
     }
 }
@@ -424,14 +843,22 @@ void EflBootstrap::stepConnectAreaRegistry() {
     roomTracker_->onRoomChange([this](const std::string& oldRoom, const std::string& newRoom) {
         log_.info("ROOM", "Room changed: " + oldRoom + " -> " + newRoom);
 
+        // Despawn all WorldNpc instances before processing old room deactivation.
+        // They belong to areas in the room we are leaving.
+        despawnAllWorldNpcs();
+
         // Deactivate areas in the old room and fire their exit events.
         auto oldAreas = registries_.areas().areasByHostRoom(oldRoom);
         for (const auto* area : oldAreas) {
             if (roomBackend_)
                 roomBackend_->deactivate();
             if (!area->exitEvent.empty())
-                registries_.story().fireEvent(area->exitEvent, registries_.triggers());
+                registries_.story().fireEffects(area->exitEvent, registries_.triggers());
         }
+
+        // Read current time of day once for all area activations in the new room.
+        int64_t t = readGameTime();
+        int timeOfDay = (t >= 0) ? static_cast<int>(t % 86400) : 21600; // default 6AM
 
         // Activate areas in the new room and fire their entry events.
         auto newAreas = registries_.areas().areasByHostRoom(newRoom);
@@ -439,68 +866,34 @@ void EflBootstrap::stepConnectAreaRegistry() {
             if (roomBackend_)
                 roomBackend_->activate(*area);
             if (!area->entryEvent.empty())
-                registries_.story().fireEvent(area->entryEvent, registries_.triggers());
+                registries_.story().fireEffects(area->entryEvent, registries_.triggers());
 
-            // Spawn resource nodes for this area.
-            // Uses instance_create_layer if ResourceDef.objectName is set — the same
-            // approach used for NPC spawning. Full grid-native spawn via
-            // gml_Script_attempt_to_write_object_node is deferred until the node
-            // prototype struct layout is confirmed (RESOURCE-H003, ore-span probe).
+            // Spawn resource nodes for this area via spawnResourceNode().
+            // Uses instance_create_layer if ResourceDef.objectName is set (interim path).
+            // Full grid-native spawn via attempt_to_write_object_node deferred pending
+            // register_node@Anchor@Anchor struct probe (RESOURCE-H003).
             auto resources = registries_.resources().resourcesInArea(area->id);
             for (const auto* res : resources) {
-                auto anchorIt = res->spawnRules.anchors.find(area->id);
-                if (anchorIt == res->spawnRules.anchors.end()) {
+                if (res->spawnRules.anchors.find(area->id) == res->spawnRules.anchors.end()) {
                     log_.warn("RESOURCE", "No anchor for " + res->id + " in area " + area->id
                               + " — skipping spawn (add spawnRules.anchors in resource JSON)");
                     continue;
                 }
-                const auto [gx, gy] = anchorIt->second;
-
                 if (res->objectName.empty()) {
-                    // Grid-native spawn requires struct layout from probe — emit diagnostic.
                     diagnostics_.emit("RESOURCE-W003", Severity::Warning, "RESOURCE",
                         "Resource '" + res->id + "' has no objectName — spawn skipped",
                         "Add \"objectName\": \"obj_<name>\" to resource JSON for interim spawn");
                     continue;
                 }
+                spawnResourceNode(*res, area->id);
+            }
 
-#ifndef EFL_STUB_SDK
-                try {
-                    // Pixel coords: FoM grid cells are 32×32px.
-                    double px = static_cast<double>(gx) * 32.0;
-                    double py = static_cast<double>(gy) * 32.0;
-
-                    YYTK::RValue assetId = routineInvoker_->callBuiltin(
-                        "asset_get_index", {YYTK::RValue(res->objectName.c_str())});
-
-                    if (assetId.m_Kind == YYTK::VALUE_REAL && assetId.m_Real < 0) {
-                        log_.warn("RESOURCE", "Unknown FoM object '" + res->objectName
-                                  + "' for resource " + res->id
-                                  + " — check objectName in resource JSON");
-                        continue;
-                    }
-
-                    YYTK::RValue layer(YYTK::RValue("Instances"));
-                    routineInvoker_->callBuiltin("instance_create_layer",
-                        {YYTK::RValue(px), YYTK::RValue(py), layer, assetId});
-
-                    log_.info("RESOURCE", "Spawned " + res->id + " (" + res->objectName
-                              + ") at grid (" + std::to_string(gx) + "," + std::to_string(gy) + ")");
-                    if (pipe_) {
-                        pipe_->write("resource.spawned", nlohmann::json{
-                            {"resourceId", res->id}, {"areaId", area->id},
-                            {"objectName", res->objectName},
-                            {"gridX", gx}, {"gridY", gy}});
-                    }
-                } catch (const std::exception& ex) {
-                    log_.warn("RESOURCE", "Spawn failed for " + res->id + ": " + ex.what());
-                }
-#else
-                log_.info("RESOURCE", "Stub: would spawn " + res->id
-                          + " (" + res->objectName + ") at grid ("
-                          + std::to_string(gx) + "," + std::to_string(gy)
-                          + ") in " + area->id);
-#endif
+            // Spawn WorldNpcs whose schedule puts them in this area at the current time.
+            auto worldNpcs = registries_.worldNpcs().worldNpcsForArea(area->id, timeOfDay);
+            for (const auto* wnpc : worldNpcs) {
+                auto [activeArea, anchorId] =
+                    registries_.worldNpcs().activeLocationForNpc(wnpc->id, timeOfDay);
+                spawnWorldNpc(*wnpc, activeArea, anchorId);
             }
         }
     });
@@ -568,6 +961,10 @@ void EflBootstrap::stepConnectWarpService() {
 
 void EflBootstrap::shutdown() {
     hotReload_.stop();
+    if (commandPipe_) {
+        commandPipe_->stop();
+        commandPipe_.reset();
+    }
 #ifndef EFL_STUB_SDK
     roomBackend_.reset();
     hooks_.reset();
@@ -705,7 +1102,7 @@ bool EflBootstrap::stepValidateManifests() {
             allOk = false;
         }
 
-        for (const auto& dep : m.requiredDeps) {
+        for (const auto& dep : m.dependencies.required) {
             if (!CompatibilityService::isExternalModLoaded(dep.modId)) {
                 log_.error("BOOT", "Mod '" + m.modId + "' requires '" + dep.modId +
                            "' which is not loaded");
@@ -716,13 +1113,23 @@ bool EflBootstrap::stepValidateManifests() {
             }
         }
 
-        for (const auto& dep : m.optionalDeps) {
+        for (const auto& dep : m.dependencies.optional) {
             if (!CompatibilityService::isExternalModLoaded(dep.modId)) {
                 log_.warn("BOOT", "Optional dependency '" + dep.modId +
                           "' not loaded for mod '" + m.modId + "' — related features disabled");
                 diagnostics_.emit("MANIFEST-W001", Severity::Warning, "MANIFEST",
                                   "Optional dependency '" + dep.modId + "' not loaded for mod '" + m.modId + "'",
                                   "Install '" + dep.modId + "' to enable related features");
+            }
+        }
+
+        for (const auto& c : m.dependencies.conflicts) {
+            if (CompatibilityService::isExternalModLoaded(c.modId)) {
+                log_.error("BOOT", "Mod '" + m.modId + "' conflicts with loaded mod '" + c.modId + "'");
+                diagnostics_.emit("MANIFEST-E004", Severity::Error, "MANIFEST",
+                                  "Conflicting mod '" + c.modId + "' is loaded alongside '" + m.modId + "'",
+                                  c.reason.empty() ? "Remove one of the conflicting mods" : c.reason);
+                allOk = false;
             }
         }
     }
@@ -922,18 +1329,34 @@ void EflBootstrap::stepLoadContent(const std::string& contentDir) {
             });
         }
 
-        // Story / events
+        // Story / cutscene triggers
         if (manifest.features.story) {
             loadDir("events", [&](const nlohmann::json& j, const std::string& file) {
-                auto def = EventDef::fromJson(j);
+                auto def = CutsceneDef::fromJson(j);
                 if (def) {
-                    registries_.story().registerEvent(*def);
-                    log_.info("BOOT", "Registered event: " + def->id);
+                    registries_.story().registerCutscene(*def);
+                    log_.info("BOOT", "Registered cutscene trigger: " + def->id);
                 } else {
                     log_.error("BOOT", "Failed to parse event: " + file);
                     diagnostics_.emit("STORY-E001", Severity::Error, "STORY",
-                                      "Failed to parse event definition: " + file,
-                                      "Check required fields: id, mode, trigger");
+                                      "Failed to parse cutscene definition: " + file,
+                                      "Check required fields: id, trigger");
+                }
+            });
+        }
+
+        // Calendar / world events (V3 pilot)
+        if (manifest.features.calendar) {
+            loadDir("calendar", [&](const nlohmann::json& j, const std::string& file) {
+                auto def = CalendarEventDef::fromJson(j);
+                if (def) {
+                    registries_.calendar().registerEvent(*def);
+                    log_.info("BOOT", "Registered calendar event: " + def->id);
+                } else {
+                    log_.error("BOOT", "Failed to parse calendar event: " + file);
+                    diagnostics_.emit("CALENDAR-E001", Severity::Error, "CALENDAR",
+                                      "Failed to parse calendar event definition: " + file,
+                                      "Check required field: id");
                 }
             });
         }
@@ -1027,10 +1450,10 @@ void EflBootstrap::reloadContentType(const std::string& contentType,
                 log_.warn("RELOAD", "Failed to parse dialogue: " + fname);
             }
         } else if (contentType == "events") {
-            auto def = EventDef::fromJson(j);
+            auto def = CutsceneDef::fromJson(j);
             if (def) {
-                registries_.story().registerEvent(*def);
-                log_.info("RELOAD", "Reloaded event: " + def->id);
+                registries_.story().registerCutscene(*def);
+                log_.info("RELOAD", "Reloaded cutscene trigger: " + def->id);
             } else {
                 log_.warn("RELOAD", "Failed to parse event: " + fname);
             }
@@ -1041,6 +1464,14 @@ void EflBootstrap::reloadContentType(const std::string& contentType,
                 log_.info("RELOAD", "Reloaded world NPC: " + def->id);
             } else {
                 log_.warn("RELOAD", "Failed to parse world NPC: " + fname);
+            }
+        } else if (contentType == "calendar") {
+            auto def = CalendarEventDef::fromJson(j);
+            if (def) {
+                registries_.calendar().registerEvent(*def);
+                log_.info("RELOAD", "Reloaded calendar event: " + def->id);
+            } else {
+                log_.warn("RELOAD", "Failed to parse calendar event: " + fname);
             }
         } else {
             log_.info("RELOAD", "Unknown content type '" + contentType + "' ignored");
@@ -1087,5 +1518,332 @@ void EflBootstrap::emitBootStatus(const std::string& step, const std::string& st
 
     pipe_->write("boot.status", payload);
 }
+
+void EflBootstrap::handleCommand(const CommandMessage& cmd) {
+    if (cmd.type == "ping") {
+        if (pipe_) {
+            pipe_->write("pong", nlohmann::json{{"echo", cmd.payload}});
+        }
+        return;
+    }
+
+    if (cmd.type == "reload") {
+        std::string reason = cmd.payload.value("reason", std::string("devkit-command"));
+        reloadAllContent(reason);
+        return;
+    }
+
+    if (cmd.type == "caps" || cmd.type == "capabilities") {
+        if (pipe_) {
+            pipe_->write("capabilities.snapshot", nlohmann::json{
+                {"eflVersion", eflVersionString()},
+                {"handlers", builtinScriptHookHandlers()},
+                {"features", supportedFeatureTags()},
+                {"hookKinds", supportedHookKinds()},
+                {"flags", buildCapabilityFlags()},
+            });
+        }
+        return;
+    }
+
+    log_.warn("COMMAND", "Unknown DevKit command: " + cmd.type);
+    if (pipe_) {
+        pipe_->write("command.unknown", nlohmann::json{{"type", cmd.type}});
+    }
+}
+
+void EflBootstrap::reloadAllContent(const std::string& reason) {
+    namespace fs = std::filesystem;
+
+    if (contentDir_.empty()) {
+        log_.warn("RELOAD", "Cannot honour reload command: contentDir is empty");
+        return;
+    }
+
+    fs::path root = fs::path(contentDir_);
+    std::error_code ec;
+    if (!fs::is_directory(root, ec)) {
+        log_.warn("RELOAD", "Reload target is not a directory: " + root.string());
+        return;
+    }
+
+    if (pipe_) {
+        pipe_->write("reload.requested", nlohmann::json{
+            {"path", root.string()},
+            {"reason", reason}
+        });
+    }
+
+    size_t files = 0;
+    size_t failures = 0;
+
+    for (auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::end(it);
+         it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        const auto& entry = *it;
+        if (!entry.is_regular_file(ec) || ec) {
+            ec.clear();
+            continue;
+        }
+        if (entry.path().extension() != ".json") {
+            continue;
+        }
+
+        // The contentType is the immediate parent directory name relative to root.
+        fs::path rel = fs::relative(entry.path(), root, ec);
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!rel.has_parent_path()) {
+            continue; // top-level files like config.json are not registry content
+        }
+        std::string contentType = rel.begin()->string();
+        if (contentType.empty() || contentType == ".") {
+            continue;
+        }
+
+        size_t before = failures;
+        try {
+            reloadContentType(contentType, entry.path());
+            ++files;
+        } catch (const std::exception& ex) {
+            ++failures;
+            log_.error("RELOAD", std::string{"reload exception: "} + ex.what());
+        }
+        if (failures > before) {
+            log_.warn("RELOAD", "Reload error in " + entry.path().string());
+        }
+    }
+
+    log_.info("RELOAD", "DevKit reload complete (reason=" + reason + ", files="
+              + std::to_string(files) + ", failures=" + std::to_string(failures) + ")");
+    if (pipe_) {
+        pipe_->write("reload.complete", nlohmann::json{
+            {"path", root.string()},
+            {"reason", reason},
+            {"files", files},
+            {"failures", failures},
+            {"status", failures == 0 ? "ok" : "partial"}
+        });
+    }
+}
+
+// ─── Resource lifecycle helpers (real SDK only) ───────────────────────────────
+
+#ifndef EFL_STUB_SDK
+
+void EflBootstrap::spawnResourceNode(const ResourceDef& res, const std::string& areaId) {
+    auto anchorIt = res.spawnRules.anchors.find(areaId);
+    if (anchorIt == res.spawnRules.anchors.end()) return;
+    const auto [gx, gy] = anchorIt->second;
+    if (res.objectName.empty()) return; // RESOURCE-W003 already emitted at area entry
+
+    try {
+        double px = static_cast<double>(gx) * 32.0;
+        double py = static_cast<double>(gy) * 32.0;
+
+        YYTK::RValue assetId = routineInvoker_->callBuiltin(
+            "asset_get_index", {YYTK::RValue(res.objectName.c_str())});
+
+        if (assetId.m_Kind == YYTK::VALUE_REAL && assetId.m_Real < 0) {
+            log_.warn("RESOURCE", "Unknown FoM object '" + res.objectName
+                      + "' for resource " + res.id + " — check objectName in resource JSON");
+            return;
+        }
+
+        routineInvoker_->callBuiltin("instance_create_layer",
+            {YYTK::RValue(px), YYTK::RValue(py), YYTK::RValue("Instances"), assetId});
+
+        log_.info("RESOURCE", "Spawned " + res.id + " (" + res.objectName
+                  + ") at grid (" + std::to_string(gx) + "," + std::to_string(gy)
+                  + ") in " + areaId);
+
+        if (pipe_) {
+            pipe_->write("resource.spawned", nlohmann::json{
+                {"resourceId", res.id}, {"areaId", areaId},
+                {"objectName", res.objectName}, {"gridX", gx}, {"gridY", gy}});
+        }
+    } catch (const std::exception& ex) {
+        log_.warn("RESOURCE", "Spawn failed for " + res.id + ": " + ex.what());
+    }
+}
+
+// static
+uint64_t EflBootstrap::respawnThresholdDays(const std::string& policy) {
+    if (policy == "none")  return 0; // never respawn
+    if (policy == "daily") return 1;
+    if (policy == "seasonal") return 0; // handled via season change detection, not day count
+    return 1;
+}
+
+// Probe B confirmed: unified_time@Calendar@Calendar returns int64 total seconds
+// from midnight of day 0. time_of_day = value % 86400, day_index = value / 86400 - 1.
+int64_t EflBootstrap::readGameTime() const {
+    try {
+        auto rv = routineInvoker_->callGameScript(
+            "gml_Script_unified_time@Calendar@Calendar", {});
+        if (rv.m_Kind == YYTK::VALUE_INT64) return rv.m_i64;
+        if (rv.m_Kind == YYTK::VALUE_REAL)  return static_cast<int64_t>(rv.m_Real);
+        if (rv.m_Kind == YYTK::VALUE_INT32) return rv.m_i32;
+    } catch (...) {}
+    return -1;
+}
+
+// season@Calendar@Calendar returns number: 0=spring 1=summer 2=fall 3=winter.
+int EflBootstrap::readSeason() const {
+    try {
+        auto rv = routineInvoker_->callGameScript(
+            "gml_Script_season@Calendar@Calendar", {});
+        if (rv.m_Kind == YYTK::VALUE_REAL)  return static_cast<int>(rv.m_Real);
+        if (rv.m_Kind == YYTK::VALUE_INT32) return rv.m_i32;
+    } catch (...) {}
+    return -1;
+}
+
+// Day-of-season derived from unified_time. FoM's Calendar uses 28-day months,
+// so we derive the day from the absolute day index rather than asking GML for
+// it (no probed script returns it directly). Returns 1..28 on success, -1 if
+// Calendar isn't ready yet.
+int EflBootstrap::readDayOfSeason() const {
+    int64_t t = readGameTime();
+    if (t < 0) return -1;
+    int64_t absoluteDay = t / 86400;
+    if (absoluteDay < 0) return -1;
+    int day = static_cast<int>((absoluteDay % 28) + 1);
+    return day;
+}
+
+// Drive CalendarRegistry's tick and fire onActivate side-effects through the
+// same TriggerService + StoryBridge that quests/cutscenes use. Kept here so
+// the registry stays decoupled from the live engine bridges.
+void EflBootstrap::fireCalendarEvents(int season, int dayOfSeason) {
+    auto& cal = registries_.calendar();
+    cal.onActivate = [this](const CalendarEventDef& def) {
+        if (!def.condition.empty()) {
+            if (!registries_.triggers().evaluate(def.condition)) {
+                log_.info("CALENDAR",
+                          "Event '" + def.id + "' skipped: condition '"
+                          + def.condition + "' not satisfied");
+                return;
+            }
+        }
+
+        log_.info("CALENDAR", "Firing calendar event: " + def.id);
+
+        if (!def.onActivate.empty()) {
+            registries_.story().fireEffects(def.onActivate, registries_.triggers());
+        }
+    };
+
+    size_t fired = cal.tickNewDay(season, dayOfSeason);
+    if (fired > 0) {
+        log_.info("CALENDAR",
+                  "Fired " + std::to_string(fired) + " calendar event(s) for season="
+                  + std::to_string(season) + " day=" + std::to_string(dayOfSeason));
+    }
+}
+
+// ─── WorldNpc spawn / despawn helpers ────────────────────────────────────────
+
+void EflBootstrap::spawnWorldNpc(const WorldNpcDef& def,
+                                  const std::string& areaId,
+                                  const std::string& anchorId) {
+    if (def.objectName.empty()) {
+        log_.warn("NPC", "WorldNpc '" + def.id + "' has no objectName — spawn skipped");
+        return;
+    }
+    if (def.unlockTrigger && !registries_.triggers().evaluate(*def.unlockTrigger)) {
+        log_.info("NPC", "WorldNpc '" + def.id + "' locked (trigger: " + *def.unlockTrigger + ")");
+        return;
+    }
+
+    // Despawn any existing instance first (handles teleport case).
+    despawnWorldNpc(def.id);
+
+    auto commaPos = anchorId.find(',');
+    if (commaPos == std::string::npos) {
+        log_.warn("NPC", "WorldNpc '" + def.id + "': invalid anchor '" + anchorId
+                  + "' — expected \"x,y\" format");
+        return;
+    }
+
+    try {
+        double x = std::stod(anchorId.substr(0, commaPos));
+        double y = std::stod(anchorId.substr(commaPos + 1));
+
+        YYTK::RValue obj = routineInvoker_->callBuiltin("asset_get_index",
+            {YYTK::RValue(def.objectName.c_str())});
+        if (obj.m_Kind == YYTK::VALUE_REAL && obj.m_Real < 0) {
+            log_.warn("NPC", "WorldNpc '" + def.id + "': unknown object '" + def.objectName + "'");
+            return;
+        }
+
+        YYTK::RValue inst = routineInvoker_->callBuiltin("instance_create_layer",
+            {YYTK::RValue(x), YYTK::RValue(y), YYTK::RValue("Instances"), obj});
+
+        worldNpcInstanceIds_[def.id] = inst.m_Real;
+
+        // Keep registry in sync so the next tickSchedule frame doesn't re-fire for this NPC.
+        registries_.worldNpcs().setLastKnown(def.id, areaId, anchorId);
+
+        log_.info("NPC", "Spawned WorldNpc '" + def.id + "' at ("
+                  + std::to_string(x) + "," + std::to_string(y) + ") area=" + areaId);
+        if (pipe_) {
+            pipe_->write("npc.spawned", nlohmann::json{
+                {"npcId", def.id}, {"areaId", areaId},
+                {"x", x}, {"y", y}, {"kind", "world"}});
+        }
+    } catch (const std::exception& ex) {
+        log_.warn("NPC", "Failed to spawn WorldNpc '" + def.id + "': " + ex.what());
+    }
+}
+
+void EflBootstrap::despawnWorldNpc(const std::string& npcId) {
+    auto it = worldNpcInstanceIds_.find(npcId);
+    if (it == worldNpcInstanceIds_.end()) return;
+
+    try {
+        routineInvoker_->callBuiltin("instance_destroy",
+            {YYTK::RValue(it->second)});
+    } catch (...) {}
+
+    worldNpcInstanceIds_.erase(it);
+    log_.info("NPC", "Despawned WorldNpc '" + npcId + "'");
+    if (pipe_) {
+        pipe_->write("npc.despawned", nlohmann::json{{"npcId", npcId}, {"kind", "world"}});
+    }
+}
+
+void EflBootstrap::despawnAllWorldNpcs() {
+    if (worldNpcInstanceIds_.empty()) return;
+    std::vector<std::string> ids;
+    ids.reserve(worldNpcInstanceIds_.size());
+    for (auto& [id, _] : worldNpcInstanceIds_)
+        ids.push_back(id);
+    for (const auto& id : ids)
+        despawnWorldNpc(id);
+}
+
+// Probe D confirmed: give_item@Ari@Ari(itemId: int, qty: real).
+// itemId is the numeric index into t2_input.json's items array.
+void EflBootstrap::grantItem(int itemId, int qty) {
+    try {
+        YYTK::RValue idRv, qtyRv;
+        idRv.m_Kind  = YYTK::VALUE_INT32; idRv.m_i32   = itemId;
+        qtyRv.m_Kind = YYTK::VALUE_REAL;  qtyRv.m_Real = static_cast<double>(qty);
+        routineInvoker_->callGameScript(
+            "gml_Script_give_item@Ari@Ari", {idRv, qtyRv});
+        log_.info("ITEM", "Granted item " + std::to_string(itemId) + " x" + std::to_string(qty));
+    } catch (...) {
+        log_.warn("ITEM", "give_item@Ari@Ari call failed for id=" + std::to_string(itemId));
+    }
+}
+
+#endif // EFL_STUB_SDK
 
 } // namespace efl

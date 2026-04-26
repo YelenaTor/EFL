@@ -9,6 +9,9 @@ target_link_libraries(efl_tests PRIVATE
 target_include_directories(efl_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
+if(MSVC)
+    target_compile_options(efl_tests PRIVATE /FS)
+endif()
 target_compile_definitions(efl_tests PRIVATE
     EFL_BUILDING_DLL
     EFL_STUB_SDK

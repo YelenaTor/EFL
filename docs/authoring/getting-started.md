@@ -1,12 +1,28 @@
 # Your First EFL Pack
 
-This guide walks you through creating a minimal EFL Pack from scratch. By the end, you'll have a custom area with a warp point that you can walk into in-game.
+This quickstart is intentionally simple: set up DevKit, build your first pack, stay on the EFL-vs-MOMI boundary, and know what to check when something fails.
 
-## What You Need
+## Setup (Prerequisites)
 
-- A text editor (VS Code recommended — it supports JSON Schema autocomplete)
-- The `schemas/` folder from this repository (for editor autocomplete)
 - Fields of Mistria with EFL installed (see [Installing Content Packs](../player/installing-content-packs.md))
+- EFL DevKit installed and configured with:
+  - Projects folder (your source pack workspaces)
+  - Output folder (compiled artifacts)
+- Optional: VS Code + this repo `schemas/` folder for JSON autocomplete
+
+## First Pack (Fast Path)
+
+1. Open DevKit.
+2. Go to **Packs**.
+3. Click **+ New** and create a pack with:
+   - `modId` in namespaced format (`com.author.pack`)
+   - `features` only for systems you use
+4. Click **Pack → .efpack**.
+5. Click **Validate** and clear all errors.
+6. If upgrading an older pack, click **Migrate...**:
+   - run **Analyze (dry-run)**
+   - run **Apply Migration** only after reviewing changes
+   - DevKit creates a full backup before writing
 
 ## Step 1: Create Your Pack Folder
 
@@ -24,48 +40,29 @@ Create `manifest.efl` in your pack folder:
 
 ```json
 {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "modId": "com.yourname.my-first-pack",
     "name": "My First Pack",
     "version": "0.1.0",
-    "eflVersion": "1.0.0-pre.3",
-    "dependencies": {
-        "required": [],
-        "optional": []
-    },
-    "features": {
-        "areas": true,
-        "warps": true,
-        "resources": false,
-        "crafting": false,
-        "npcs": false,
-        "quests": false,
-        "triggers": false,
-        "dialogue": false,
-        "story": false,
-        "ipcPublish": false,
-        "ipcConsume": false,
-        "migrations": false
-    },
+    "eflVersion": "1.0.0",
+    "features": ["areas", "warps"],
     "settings": {
         "strictMode": true,
-        "areaBackend": "hijacked",
-        "saveScope": "EFL/com.yourname.my-first-pack"
+        "areaBackend": "hijacked"
     }
 }
 ```
 
 ### Key Fields Explained
 
-- **schemaVersion**: Always `1` for now. This tracks manifest format changes.
+- **schemaVersion**: Always `2` for the current manifest format.
 - **modId**: A unique identifier in reverse-domain notation (e.g., `com.yourname.modname`). This must be globally unique across all EFL Packs.
 - **name**: Human-readable display name for your pack.
 - **version**: Your pack's version, following [semver](https://semver.org/).
 - **eflVersion**: The minimum EFL version your pack requires.
-- **features**: Boolean flags declaring which EFL subsystems your pack uses. In strict mode, accessing an undeclared subsystem is an error. In non-strict mode, it's a warning.
+- **features**: A string array listing which EFL subsystems your pack uses. Only declare what you need. In strict mode, accessing an undeclared subsystem is an error; in non-strict mode, it's a warning.
 - **settings.strictMode**: When `true`, EFL rejects attempts to use undeclared features. Recommended for development.
-- **settings.areaBackend**: Use `"hijacked"` in v1. This reuses existing game rooms as the basis for custom areas.
-- **settings.saveScope**: The namespace prefix for your pack's save data. Convention: `EFL/<modId>`.
+- **settings.areaBackend**: Use `"hijacked"` — this reuses existing game rooms as the basis for custom areas. (`"native"` is planned but not yet available.)
 
 ## Step 3: Define an Area
 
@@ -135,8 +132,33 @@ From here you can:
 - Gate access with triggers — see [Triggers and Conditions](triggers-and-conditions.md)
 - Study the example pack — see [Examples](examples.md)
 
+## EFL vs MOMI (Cheat Sheet)
+
+- **EFL owns runtime behavior**: triggers, quests, events, live registry state, runtime asset injection.
+- **MOMI owns pre-launch delivery**: install, file placement, localization text delivery, fiddle data merge.
+- If you see a `localisation/` folder inside an EFL pack workspace, move that text delivery to MOMI.
+
+## Troubleshooting (Top Checks)
+
+1. **Pack won’t build**
+   - ensure `manifest.efl` exists and is valid JSON
+   - ensure output directory is configured
+2. **Validation errors**
+   - run `recommended` profile first
+   - fix `MANIFEST-E*` issues before warnings
+3. **Runtime loads but behavior missing**
+   - open DevKit **Diagnostics**
+   - check Runtime Sequence and Hook health
+4. **Upgraded old pack behaves strangely**
+   - re-run **Migrate...** dry-run
+   - confirm backup path was created before apply
+5. **Compatibility uncertainty**
+   - check loaded EFPacks, loaded MOMI mods, and relationship view in Diagnostics
+
 ## Current Limitations
 
-- **Hijacked backend only**: Custom areas reuse existing game rooms. True custom room creation (`native` backend) is reserved for a future release.
-- **Local NPCs only**: NPCs can only exist within EFL areas. World NPCs (global schedules, hearts, gifts) are reserved for a future release.
-- **No script injection**: You cannot define custom NPC behaviors or player abilities through scripting. This is reserved for a future release.
+- **Hijacked backend only**: Custom areas reuse existing game rooms. True custom room creation (`native` backend) is planned but not yet available — use `"areaBackend": "hijacked"`.
+- **Dungeon vote injection is stubbed**: Resource nodes with `dungeonVotes` register the hook but won't appear on dungeon floors yet (pending an internal struct probe). See `RESOURCE-W001`.
+- **Crafting station filtering**: All trigger-unlocked EFL recipes currently inject into every crafting menu regardless of the `station` field.
+- **Resource item grants require `itemId`**: Yield table entries must include a numeric `itemId` (the FoM item index) for harvested items to actually be granted to the player. Without `itemId`, the harvest is logged and emitted via IPC but no item is given.
+- **No GML script injection**: Content hooks use the `"callback"` mode only. `mode: "inject"` is reserved for a future release and emits `HOOK-W002` if used.

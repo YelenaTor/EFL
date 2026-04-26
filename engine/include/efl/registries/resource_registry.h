@@ -9,13 +9,21 @@ namespace efl {
 
 struct YieldEntry {
     std::string item;
+    int itemId = -1;  // numeric FoM item index; -1 = not set (harvest logged, no grant)
     int min = 0;
     int max = 1;
 };
 
 struct DungeonVoteEntry {
-    std::string biome;   // "upper_mines"|"tide_caverns"|"deep_earth"|"lava_caves"|"ancient_ruins"
-    std::string pool;    // "ore_rock"|"small_rock"|"seam_rock"|"large_rock"
+    // biome name as it appears in __fiddle__.json dungeons/dungeons/biomes[N].name (lowercase/underscore):
+    //   "upper_mines" (floor 1) | "tide_caverns" (20) | "deep_earth" (40)
+    //   "lava_caves" (60) | "ancient_ruins" (80)
+    std::string biome;
+    // pool key inside biome.votes: "ore_rock"|"small_rock"|"seam_rock"|"large_rock"|"enemy"|...
+    std::string pool = "ore_rock";
+    // GML object name to spawn (matches __fiddle__.json item/object IDs, e.g. "node_copper")
+    std::string objectId;
+    // vote weight — higher = more frequent relative to other pool entries
     int weight = 1;
 };
 

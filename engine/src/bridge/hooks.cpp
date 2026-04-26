@@ -111,6 +111,39 @@ static YYTK::PFUNC_YYGMLScript g_yycShimFns[MAX_YYC_SLOTS] = {
     YycShim_28, YycShim_29, YycShim_30, YycShim_31,
 };
 
+// ── Intercept shim slots ─────────────────────────────────────────────────────
+//
+// Like the YYC shims, but the callback can set `r` and return true to
+// short-circuit (trampoline is not called). Used for hooks that need to
+// override the script's return value (e.g. check_cutscene_eligible).
+
+struct YycInterceptSlot {
+    YYTK::PFUNC_YYGMLScript trampoline = nullptr;
+    InterceptCallback       callback;
+};
+
+static constexpr int MAX_INTERCEPT_SLOTS = 8;
+static YycInterceptSlot g_interceptSlots[MAX_INTERCEPT_SLOTS];
+static int              g_interceptSlotCount = 0;
+
+#define YYC_INTERCEPT_SHIM(N)                                                  \
+    static YYTK::RValue& YycInterceptShim_##N(                                 \
+            YYTK::CInstance* s, YYTK::CInstance* o,                            \
+            YYTK::RValue& r,    int argc, YYTK::RValue** args) {               \
+        auto& slot = g_interceptSlots[N];                                      \
+        if (slot.callback && slot.callback(r, argc, args))                     \
+            return r;                                                           \
+        if (slot.trampoline) return slot.trampoline(s, o, r, argc, args);      \
+        return r;                                                               \
+    }
+YYC_INTERCEPT_SHIM(0) YYC_INTERCEPT_SHIM(1) YYC_INTERCEPT_SHIM(2) YYC_INTERCEPT_SHIM(3)
+YYC_INTERCEPT_SHIM(4) YYC_INTERCEPT_SHIM(5) YYC_INTERCEPT_SHIM(6) YYC_INTERCEPT_SHIM(7)
+
+static YYTK::PFUNC_YYGMLScript g_interceptShimFns[MAX_INTERCEPT_SLOTS] = {
+    YycInterceptShim_0, YycInterceptShim_1, YycInterceptShim_2, YycInterceptShim_3,
+    YycInterceptShim_4, YycInterceptShim_5, YycInterceptShim_6, YycInterceptShim_7,
+};
+
 // ── Real implementation ─────────────────────────────────────────────────────
 
 // Global pointer for static callback dispatch (VM/CODE_EXECUTE path only)
@@ -275,6 +308,65 @@ bool HookRegistry::registerFrameCallback(const std::string& name, FrameCallback 
     return true;
 }
 
+bool HookRegistry::registerInterceptHook(const std::string& name, const std::string& target,
+                                          InterceptCallback callback) {
+    if (hooks_.count(name)) return false;
+    if (!yytk_ || !module_) return false;
+
+    PVOID rawPtr = nullptr;
+    auto lookupStatus = yytk_->GetNamedRoutinePointer(target.c_str(), &rawPtr);
+    if (!Aurie::AurieSuccess(lookupStatus) || !rawPtr) return false;
+
+    auto* cs = reinterpret_cast<YYTK::CScript*>(rawPtr);
+    if (!cs->m_Functions || !cs->m_Functions->m_ScriptFunction) return false;
+
+    if (g_interceptSlotCount >= MAX_INTERCEPT_SLOTS) {
+        if (pipe_) {
+            pipe_->write("hook.error", nlohmann::json{
+                {"name", name}, {"error", "intercept slot table full"}});
+        }
+        return false;
+    }
+
+    int slotIdx = g_interceptSlotCount++;
+    PVOID trampRaw = nullptr;
+    Aurie::AurieStatus hookStatus = Aurie::MmCreateHook(
+        module_,
+        name,
+        reinterpret_cast<PVOID>(cs->m_Functions->m_ScriptFunction),
+        reinterpret_cast<PVOID>(g_interceptShimFns[slotIdx]),
+        &trampRaw
+    );
+    if (!Aurie::AurieSuccess(hookStatus)) {
+        --g_interceptSlotCount;
+        if (pipe_) {
+            pipe_->write("hook.error", nlohmann::json{
+                {"name", name}, {"error", "MmCreateHook failed (intercept)"},
+                {"status", static_cast<int>(hookStatus)}});
+        }
+        return false;
+    }
+
+    g_interceptSlots[slotIdx].trampoline =
+        reinterpret_cast<YYTK::PFUNC_YYGMLScript>(trampRaw);
+    g_interceptSlots[slotIdx].callback = std::move(callback);
+
+    hooks_[name] = HookEntry{
+        .kind = HookKind::YycScript,
+        .target = target,
+        .scriptCb = {},
+        .frameCb = {},
+        .yycSlotIndex = slotIdx
+    };
+
+    if (pipe_) {
+        pipe_->write("hook.registered", nlohmann::json{
+            {"name", name}, {"target", target}, {"kind", "yyc_intercept"},
+            {"slot", slotIdx}});
+    }
+    return true;
+}
+
 bool HookRegistry::registerDetour(const std::string& name, void* source, void* dest,
                                     void** trampoline) {
     if (hooks_.count(name)) return false;
@@ -322,11 +414,13 @@ void HookRegistry::removeAll() {
             Aurie::MmRemoveHook(module_, name);
         }
     }
-    // Reset YYC slot table so slots can be reused if removeAll is called mid-session.
-    for (int i = 0; i < g_yycSlotCount; ++i) {
+    // Reset YYC slot tables so slots can be reused if removeAll is called mid-session.
+    for (int i = 0; i < g_yycSlotCount; ++i)
         g_yycSlots[i] = YycSlot{};
-    }
     g_yycSlotCount = 0;
+    for (int i = 0; i < g_interceptSlotCount; ++i)
+        g_interceptSlots[i] = YycInterceptSlot{};
+    g_interceptSlotCount = 0;
     hooks_.clear();
 
     if (yytk_ && module_) {

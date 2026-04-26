@@ -2,92 +2,196 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/efl-manifest.schema.json",
   "title": "EFL Manifest",
-  "description": "Schema for .efl capability manifest files",
+  "description": "Schema for .efl capability manifest files (schema version 2).",
   "type": "object",
   "required": ["schemaVersion", "modId", "name", "version", "eflVersion"],
   "properties": {
+
     "schemaVersion": {
       "type": "integer",
-      "description": "Manifest schema version"
+      "const": 2,
+      "description": "Manifest schema version. Must be 2 for this format."
     },
+
     "modId": {
       "type": "string",
-      "description": "Unique mod identifier (reverse domain notation)"
+      "description": "Globally unique identifier in reverse-domain notation (e.g. com.author.modname). Used for save namespacing, dependency resolution, and IPC channel ownership. No spaces.",
+      "pattern": "^[a-z0-9]+(?:\\.[a-z0-9][a-z0-9-]*)*$"
     },
+
     "name": {
       "type": "string",
-      "description": "Human-readable mod name"
+      "description": "Human-readable display name shown in logs and the DevKit."
     },
+
     "version": {
       "type": "string",
-      "description": "Mod version (semver)"
+      "description": "Pack version in semver format (e.g. 1.0.0, 0.3.1-beta)."
     },
+
     "eflVersion": {
       "type": "string",
-      "description": "Minimum required EFL version (semver)"
+      "description": "Minimum EFL version required to load this pack. EFL emits MANIFEST-E002 if the installed version is older."
     },
-    "requiredDeps": {
-      "type": "array",
-      "description": "Mods that must be present for this mod to load",
-      "items": {
-        "type": "object",
-        "required": ["modId", "versionRange"],
-        "properties": {
-          "modId":        { "type": "string", "description": "Dependency mod ID (reverse domain notation)" },
-          "versionRange": { "type": "string", "description": "Semver range, e.g. \"^1.0\"" }
-        }
-      }
+
+    "author": {
+      "type": "string",
+      "description": "Pack author name. Optional. Shown in the DevKit."
     },
-    "optionalDeps": {
-      "type": "array",
-      "description": "Mods that enhance this mod if present but are not required",
-      "items": {
-        "type": "object",
-        "required": ["modId", "versionRange"],
-        "properties": {
-          "modId":        { "type": "string" },
-          "versionRange": { "type": "string" }
-        }
-      }
+
+    "description": {
+      "type": "string",
+      "description": "Short human-readable description of what this pack does. Optional. Shown in the DevKit."
     },
-    "features": {
+
+    "dependencies": {
       "type": "object",
-      "description": "Feature flags declaring which EFL subsystems this mod uses",
+      "description": "Relationships with other packs.",
       "properties": {
-        "areas": { "type": "boolean" },
-        "warps": { "type": "boolean" },
-        "resources": { "type": "boolean" },
-        "crafting": { "type": "boolean" },
-        "npcs": { "type": "boolean" },
-        "quests": { "type": "boolean" },
-        "triggers": { "type": "boolean" },
-        "dialogue": { "type": "boolean" },
-        "story": { "type": "boolean" },
-        "ipcPublish": { "type": "boolean" },
-        "ipcConsume": { "type": "boolean" },
-        "migrations": { "type": "boolean" }
-      }
+
+        "required": {
+          "type": "array",
+          "description": "Packs that must be loaded before this one. EFL emits MANIFEST-E003 if any are missing.",
+          "items": {
+            "type": "object",
+            "required": ["modId", "versionRange"],
+            "properties": {
+              "modId":        { "type": "string", "description": "Dependency pack ID." },
+              "versionRange": { "type": "string", "description": "Semver range (e.g. ^1.0, >=2.1.0)." }
+            },
+            "additionalProperties": false
+          }
+        },
+
+        "optional": {
+          "type": "array",
+          "description": "Packs that enhance this one if present. EFL emits MANIFEST-W001 if any are missing.",
+          "items": {
+            "type": "object",
+            "required": ["modId", "versionRange"],
+            "properties": {
+              "modId":        { "type": "string" },
+              "versionRange": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+
+        "conflicts": {
+          "type": "array",
+          "description": "Packs known to be incompatible with this one. EFL emits MANIFEST-E004 if a conflicting pack is loaded alongside this one.",
+          "items": {
+            "type": "object",
+            "required": ["modId"],
+            "properties": {
+              "modId":  { "type": "string", "description": "Conflicting pack ID." },
+              "reason": { "type": "string", "description": "Human-readable explanation shown in the error message." }
+            },
+            "additionalProperties": false
+          }
+        }
+
+      },
+      "additionalProperties": false
     },
+
+    "features": {
+      "type": "array",
+      "description": "EFL subsystems this pack uses. Only declare what you actually use — omitted subsystems are assumed unused. In strictMode, accessing an undeclared subsystem is an error.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "areas",
+          "warps",
+          "resources",
+          "crafting",
+          "npcs",
+          "quests",
+          "triggers",
+          "dialogue",
+          "story",
+          "ipc",
+          "assets",
+          "calendar",
+          "migrations"
+        ]
+      },
+      "uniqueItems": true
+    },
+
+    "assets": {
+      "type": "object",
+      "description": "Asset bundles included in this pack for runtime injection via YYTK. Only valid when 'assets' is listed in features. EFL's AssetService injects these at boot so the game sees them as native assets.",
+      "properties": {
+        "sprites": {
+          "type": "array",
+          "description": "Sprite asset IDs to inject (e.g. spr_Fluffkin). The asset file must exist at assets/sprites/<id>.png inside the pack.",
+          "items": { "type": "string" }
+        },
+        "sounds": {
+          "type": "array",
+          "description": "Sound asset IDs to inject (e.g. snd_Fluffkin_idle). The asset file must exist at assets/sounds/<id>.ogg inside the pack.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "ipc": {
+      "type": "object",
+      "description": "IPC channel declarations. Only valid when 'ipc' is listed in features.",
+      "properties": {
+        "publish": {
+          "type": "array",
+          "description": "Channel IDs this pack will publish messages to. Must be owned by this pack (prefixed with modId).",
+          "items": { "type": "string" }
+        },
+        "consume": {
+          "type": "array",
+          "description": "Channel IDs this pack will subscribe to. May be owned by other packs.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+
     "settings": {
       "type": "object",
+      "description": "Runtime behaviour settings.",
       "properties": {
-        "strictMode": { "type": "boolean" },
-        "areaBackend": { "type": "string" },
-        "saveScope": { "type": "string" }
-      }
+        "strictMode": {
+          "type": "boolean",
+          "description": "When true, accessing an EFL subsystem not declared in features is a fatal error. When false, it emits a warning. Default: false."
+        },
+        "areaBackend": {
+          "type": "string",
+          "enum": ["hijacked", "native"],
+          "description": "Area backend to use. hijacked repopulates existing game rooms. native (true custom rooms) is probe-gated — use hijacked unless you know the native room hook surface is confirmed."
+        }
+      },
+      "additionalProperties": false
     },
+
     "scriptHooks": {
       "type": "array",
-      "description": "Script hooks declared by this mod (v2.2). Default mode is 'callback' (built-in EFL handler). Use mode 'inject' to opt into future GML injection support.",
+      "description": "Custom script hooks this pack registers. Each entry patches a FoM GML script to call an EFL handler when it fires.",
       "items": {
         "type": "object",
         "required": ["target", "handler"],
         "properties": {
-          "target":  { "type": "string", "description": "GML script name to hook, e.g. gml_Script_hoe_node" },
-          "handler": { "type": "string", "description": "Built-in EFL handler name, e.g. efl_resource_despawn" },
-          "mode":    { "type": "string", "enum": ["callback", "inject"], "default": "callback" }
-        }
+          "target":  { "type": "string", "description": "Exact GML script name to hook (e.g. gml_Script_hoe_node)." },
+          "handler": { "type": "string", "description": "Built-in EFL handler to call (e.g. efl_resource_despawn)." },
+          "mode":    {
+            "type": "string",
+            "enum": ["callback", "inject"],
+            "default": "callback",
+            "description": "Hook mode. callback invokes a built-in EFL handler. inject is reserved for future GML injection support and emits HOOK-W002 if used."
+          }
+        },
+        "additionalProperties": false
       }
     }
-  }
+
+  },
+  "additionalProperties": false
 }

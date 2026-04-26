@@ -27,7 +27,7 @@ Checks whether a named flag has been set in the pack's save data.
 }
 ```
 
-Flags are set by quest `onComplete` actions, event commands (`setFlag`), or other game state changes.
+Flags are set by quest `onComplete` actions, cutscene `onFire.setFlags` declarations, or other game state changes.
 
 ### questComplete
 

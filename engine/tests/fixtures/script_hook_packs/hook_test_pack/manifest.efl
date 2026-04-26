@@ -1,12 +1,10 @@
 {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "modId": "com.test.scripthooktest",
     "name": "Script Hook Test Pack",
     "version": "1.0.0",
     "eflVersion": "1.0.0",
-    "features": {
-        "resources": true
-    },
+    "features": ["resources"],
     "scriptHooks": [
         {
             "target": "gml_Script_hoe_node",

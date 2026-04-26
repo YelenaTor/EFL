@@ -2,19 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/trigger.schema.json",
   "title": "EFL Trigger Definition",
-  "description": "Schema for reusable boolean trigger conditions",
+  "description": "Schema for reusable boolean trigger conditions. Triggers are evaluated at runtime against live game state — they have no meaning with the game off.",
   "type": "object",
   "required": ["id", "type"],
   "properties": {
-    "id": { "type": "string" },
-    "type": { "type": "string", "enum": ["allOf", "anyOf", "questComplete", "flagSet"] },
+    "id": {
+      "type": "string",
+      "description": "Unique trigger identifier, referenced by areas, warps, events, and other triggers."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["allOf", "anyOf", "questComplete", "flagSet"],
+      "description": "allOf/anyOf compose other triggers. questComplete checks EFL quest state. flagSet checks a named flag."
+    },
+    "flagName": {
+      "type": "string",
+      "description": "Required when type is flagSet. Name of the EFL flag to test."
+    },
+    "questId": {
+      "type": "string",
+      "description": "Required when type is questComplete. EFL quest ID to test for completion."
+    },
     "conditions": {
       "type": "array",
+      "description": "Required when type is allOf or anyOf. Each entry is either a trigger ID or a flag literal (\"flag:name\").",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": { "type": "string" }
-        }
+        "type": "string"
       }
     }
   }

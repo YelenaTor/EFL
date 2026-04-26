@@ -11,6 +11,7 @@
 #include "efl/registries/crafting_registry.h"
 #include "efl/registries/dialogue_service.h"
 #include "efl/registries/story_bridge.h"
+#include "efl/registries/calendar_registry.h"
 #include "efl/core/trigger_service.h"
 
 namespace efl {
@@ -26,6 +27,7 @@ public:
     CraftingRegistry& crafting() { return crafting_; }
     DialogueService& dialogue() { return dialogue_; }
     StoryBridge& story() { return story_; }
+    CalendarRegistry& calendar() { return calendar_; }
     TriggerService& triggers() { return triggers_; }
 
     const AreaRegistry& areas() const { return areas_; }
@@ -37,6 +39,7 @@ public:
     const CraftingRegistry& crafting() const { return crafting_; }
     const DialogueService& dialogue() const { return dialogue_; }
     const StoryBridge& story() const { return story_; }
+    const CalendarRegistry& calendar() const { return calendar_; }
     const TriggerService& triggers() const { return triggers_; }
 
 private:
@@ -49,6 +52,7 @@ private:
     CraftingRegistry crafting_;
     DialogueService dialogue_;
     StoryBridge story_;
+    CalendarRegistry calendar_;
     TriggerService triggers_;
 };
 

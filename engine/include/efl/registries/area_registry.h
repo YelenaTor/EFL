@@ -20,8 +20,10 @@ struct AreaDef {
     std::string music;
     std::string entryAnchor;
     std::string unlockTrigger; // trigger ID that gates access (empty = always accessible)
-    std::string entryEvent;   // EventDef id to fire on area entry (empty = none)
-    std::string exitEvent;    // EventDef id to fire on area exit  (empty = none)
+    std::string entryEvent;   // CutsceneDef id to fire on area entry (empty = none)
+    std::string exitEvent;    // CutsceneDef id to fire on area exit  (empty = none)
+    int roomWidth  = 1024;    // native backend only: created room width  (ignored for hijacked)
+    int roomHeight = 768;     // native backend only: created room height (ignored for hijacked)
 
     static std::optional<AreaDef> fromJson(const nlohmann::json& j);
 };

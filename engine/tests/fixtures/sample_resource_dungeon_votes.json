@@ -3,7 +3,7 @@
     "kind": "harvestable_node",
     "spawnRules": {
         "dungeonVotes": [
-            { "biome": "upper_mines", "pool": "ore_rock", "weight": 5 },
+            { "biome": "upper_mines", "pool": "ore_rock", "objectId": "node_mythril", "weight": 5 },
             { "biome": "tide_caverns" }
         ]
     }

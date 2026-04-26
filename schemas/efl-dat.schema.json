@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/efl-dat.schema.json",
+  "title": "EFL Compatibility Artifact",
+  "description": "Schema for .efdat compatibility artifact files. An .efdat declares relationships between EFL packs and MOMI mods without containing any content of its own. It is a standalone distributable — typically authored by third parties — compiled and checksummed the same way as .efpack.",
+  "type": "object",
+  "required": ["schemaVersion", "datId", "name", "version", "eflVersion", "relationships"],
+  "properties": {
+
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Artifact schema version. Always 1 for the current format."
+    },
+
+    "datId": {
+      "type": "string",
+      "description": "Globally unique identifier for this compatibility artifact in reverse-domain notation. Convention: <ownerDomain>.compat.<subjectA>.<subjectB>.",
+      "pattern": "^[a-z0-9]+(?:\\.[a-z0-9][a-z0-9-]*)*$"
+    },
+
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this compatibility artifact. Convention: 'PackA × PackB Compatibility'."
+    },
+
+    "version": {
+      "type": "string",
+      "description": "Artifact version in semver format."
+    },
+
+    "eflVersion": {
+      "type": "string",
+      "description": "Minimum EFL version required to load this artifact."
+    },
+
+    "author": {
+      "type": "string",
+      "description": "Artifact author. Often a third party, not the original pack authors."
+    },
+
+    "description": {
+      "type": "string",
+      "description": "Short explanation of what this compatibility artifact does and why."
+    },
+
+    "relationships": {
+      "type": "array",
+      "description": "Declared compatibility relationships. EFL evaluates these at load time. The artifact is only activated when all required targets are present.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["type", "target"],
+        "properties": {
+
+          "type": {
+            "type": "string",
+            "enum": ["requires", "optional", "conflicts"],
+            "description": "Relationship type. requires: artifact only activates when this target is loaded (emits MANIFEST-E003 if missing). optional: artifact can partially activate without it. conflicts: emit MANIFEST-E004 if this target is present alongside the required targets."
+          },
+
+          "target": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "description": "The other pack or mod involved in this relationship.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["efpack", "momi"],
+                "description": "efpack: another EFL content pack. momi: a MOMI mod."
+              },
+              "id": {
+                "type": "string",
+                "description": "Pack or mod identifier. For efpack, the modId (reverse domain). For momi, the MOMI mod ID."
+              },
+              "versionRange": {
+                "type": "string",
+                "description": "Semver range. Required for type=requires and type=optional. Omit for type=conflicts."
+              }
+            },
+            "additionalProperties": false
+          },
+
+          "reason": {
+            "type": "string",
+            "description": "Human-readable explanation shown in warnings and errors. Especially useful for conflicts to guide the user on how to resolve them."
+          }
+
+        },
+        "additionalProperties": false
+      }
+    }
+
+  },
+  "additionalProperties": false
+}

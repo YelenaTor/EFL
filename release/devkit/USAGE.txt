@@ -1,4 +1,4 @@
-EFL DevKit V2.0.0
+EFL DevKit V1.0.0
 =================
 Expansion Framework Library — Mod Authoring Tool
 Fields of Mistria
@@ -10,6 +10,8 @@ CONTENTS OF THIS ZIP
   EFL DevKit\
     EFL.dll           - Drop into <game>\mods\aurie\ to install EFL
     efl-devkit.exe    - The DevKit application (no install required)
+    efl-pack.exe      - Headless CLI for the same pack/validate pipeline,
+                        intended for scripts and CI smoke jobs
 
   Docs\
     EFL_Player_Guide.pdf        - Installing EFL and content packs
@@ -54,6 +56,31 @@ QUICK START — MOD AUTHORS
 
 5. Copy the built .efpack into <game>\mods\efl\ to test it.
 
+
+HEADLESS CLI (efl-pack.exe)
+---------------------------
+
+efl-pack.exe shares the GUI's pack pipeline and is useful for scripted builds,
+CI checks, and quick "is my manifest sound?" runs.
+
+Examples:
+
+    # Validate without packing
+    efl-pack.exe path\to\my_pack --validate-only
+
+    # Pack a project folder using the recommended profile
+    efl-pack.exe path\to\my_pack --output build\
+
+    # Stricter checks (matches DevKit "strict" profile)
+    efl-pack.exe path\to\my_pack --output build\ --profile strict
+
+    # CI mode: pull config from environment instead of arguments
+    set EFL_PACK_PROJECT=path\to\my_pack
+    set EFL_PACK_OUTPUT=build
+    efl-pack.exe --ci
+
+Exit codes: 0 success, 1 validation errors, 2 usage / I/O error.
+
 See Docs\EFL_DevKit_Guide.pdf for the full DevKit reference.
 See Docs\EFL_Authoring_Guide.pdf to learn the content pack format.
 See Docs\EFL_Example_Mod_Guide.pdf for a complete worked example.
@@ -67,6 +94,17 @@ REQUIREMENTS
 - MOMI (Mods of Mistria Installer)
 
 EFL DevKit runs on Windows 10/11 with no additional dependencies.
+
+
+LIVE RUNTIME DIAGNOSTICS
+------------------------
+
+With Fields of Mistria running and EFL.dll loaded, the DevKit can detect the
+latest active EFL pipe automatically:
+  \\.\pipe\efl-{pid}
+
+Open the Diagnostics tab to view boot status, validation issues, and live
+runtime activity. If no engine is running, the pack tooling still works.
 
 
 DIAGNOSTIC CODES

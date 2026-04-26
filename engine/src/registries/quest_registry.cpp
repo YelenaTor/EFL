@@ -49,8 +49,9 @@ std::optional<QuestDef> QuestDef::fromJson(const nlohmann::json& j) {
         for (const auto& rewardJson : j.at("rewards")) {
             QuestReward reward;
             reward.type = rewardJson.at("type").get<std::string>();
-            if (rewardJson.contains("item"))  reward.item  = rewardJson.at("item").get<std::string>();
-            if (rewardJson.contains("count")) reward.count = rewardJson.at("count").get<int>();
+            if (rewardJson.contains("item"))   reward.item   = rewardJson.at("item").get<std::string>();
+            if (rewardJson.contains("itemId")) reward.itemId = rewardJson.at("itemId").get<int>();
+            if (rewardJson.contains("count"))  reward.count  = rewardJson.at("count").get<int>();
             def.rewards.push_back(reward);
         }
     }
@@ -99,6 +100,14 @@ void QuestRegistry::completeStage(const std::string& questId, const std::string&
     prog.currentStageIdx++;
     if (prog.currentStageIdx >= def.stages.size()) {
         prog.state = QuestState::Completed;
+
+        // Fire rewards on quest completion.
+        if (onItemGrant) {
+            for (const auto& reward : def.rewards) {
+                if (reward.type == "item" && reward.itemId > 0)
+                    onItemGrant(reward.itemId, reward.count);
+            }
+        }
     }
 }
 

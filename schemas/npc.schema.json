@@ -2,31 +2,87 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/npc.schema.json",
   "title": "EFL NPC Definition",
-  "description": "Schema for NPC definitions",
-  "type": "object",
-  "required": ["id", "displayName", "kind"],
-  "properties": {
-    "id": { "type": "string" },
-    "displayName": { "type": "string" },
-    "kind": { "type": "string", "enum": ["local", "world"] },
-    "defaultArea": { "type": "string" },
-    "spawnAnchor": { "type": "string" },
-    "portraitPack": { "type": "string" },
-    "dialogueSet": { "type": "string" },
-    "schedule": {
+  "description": "Schema for EFL NPC definitions. 'local' NPCs exist only inside EFL areas; 'world' NPCs have time-of-day schedules and may be present in any area.",
+  "oneOf": [
+    { "$ref": "#/$defs/LocalNpc" },
+    { "$ref": "#/$defs/WorldNpc" }
+  ],
+  "$defs": {
+    "LocalNpc": {
       "type": "object",
-      "additionalProperties": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "time": { "type": "string" },
-            "anchor": { "type": "string" }
-          }
-        }
-      }
+      "required": ["id", "displayName", "areaId", "spawnAnchor"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique NPC identifier within this pack." },
+        "displayName": { "type": "string" },
+        "areaId": { "type": "string", "description": "EFL area ID where this NPC always appears." },
+        "spawnAnchor": { "type": "string", "description": "Pixel position as \"x,y\" (e.g. \"640,320\")." },
+        "portraitAsset": { "type": "string" },
+        "dialogueSet": { "type": "string" },
+        "unlockTrigger": { "type": "string", "description": "EFL trigger ID that must be true for this NPC to appear." }
+      },
+      "additionalProperties": false
     },
-    "unlockTrigger": { "type": "string" },
-    "saveNamespace": { "type": "string" }
+    "WorldNpc": {
+      "type": "object",
+      "required": ["id", "displayName"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique NPC identifier within this pack." },
+        "displayName": { "type": "string" },
+        "objectName": {
+          "type": "string",
+          "description": "GML object name to instantiate, e.g. \"par_NPC\". Required for the NPC to be spawned at runtime."
+        },
+        "portraitAsset": { "type": "string" },
+        "defaultAreaId": {
+          "type": "string",
+          "description": "Area where this NPC appears when no schedule entry covers the current time."
+        },
+        "defaultAnchorId": {
+          "type": "string",
+          "description": "Pixel position as \"x,y\" used when defaultAreaId applies."
+        },
+        "unlockTrigger": {
+          "type": "string",
+          "description": "EFL trigger ID that must be true for this NPC to be spawned."
+        },
+        "schedule": {
+          "type": "array",
+          "description": "Time-of-day schedule entries. Evaluated in order; first match wins.",
+          "items": {
+            "type": "object",
+            "required": ["fromSeconds", "toSeconds", "areaId", "anchorId"],
+            "properties": {
+              "fromSeconds": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 86399,
+                "description": "Start of this schedule window, in seconds since midnight (e.g. 21600 = 6AM)."
+              },
+              "toSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 86400,
+                "description": "End of this schedule window (exclusive), in seconds since midnight."
+              },
+              "areaId": { "type": "string", "description": "EFL area ID where this NPC should be during this window." },
+              "anchorId": { "type": "string", "description": "Pixel position as \"x,y\" within the area." }
+            },
+            "additionalProperties": false
+          }
+        },
+        "giftableItems": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Item IDs this NPC accepts as gifts."
+        },
+        "heartsPerGift": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1,
+          "description": "Hearts awarded per accepted gift."
+        }
+      },
+      "additionalProperties": false
+    }
   }
 }

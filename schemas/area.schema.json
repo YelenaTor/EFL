@@ -2,22 +2,50 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/area.schema.json",
   "title": "EFL Area Definition",
-  "description": "Schema for area content definitions",
+  "description": "Schema for area content definitions. Areas are activated at runtime when the player enters a host FoM room.",
   "type": "object",
   "required": ["id", "displayName", "backend"],
   "properties": {
-    "id": { "type": "string" },
-    "displayName": { "type": "string" },
-    "backend": { "type": "string", "enum": ["hijacked", "native"] },
-    "hostRoom": { "type": "string" },
-    "locationId": { "type": "string" },
-    "music": { "type": "string" },
-    "tileProfile": { "type": "string" },
-    "spawnTable": { "type": "string" },
-    "entryAnchor": { "type": "string" },
-    "unlockTrigger": { "type": "string" },
-    "saveNamespace": { "type": "string" },
-    "entryEvent": { "type": "string", "description": "EventDef id to fire when the player enters this area" },
-    "exitEvent":  { "type": "string", "description": "EventDef id to fire when the player leaves this area" }
+    "id": {
+      "type": "string",
+      "description": "Unique area identifier, referenced by NPCs, resources, warps, and events."
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable name shown in DevKit."
+    },
+    "backend": {
+      "type": "string",
+      "enum": ["hijacked", "native"],
+      "description": "hijacked: repopulates an existing FoM room. native: reserved for future custom room registration."
+    },
+    "hostRoom": {
+      "type": "string",
+      "description": "FoM room name this area is hosted in (e.g. 'room_mine_01'). Required for hijacked backend."
+    },
+    "music": {
+      "type": "string",
+      "description": "FoM audio asset name to play on area entry (e.g. 'mus_cave'). EFL references the asset by ID — it does not own it."
+    },
+    "entryAnchor": {
+      "type": "string",
+      "description": "Default player spawn position on entry, as 'x,y' grid coords."
+    },
+    "unlockTrigger": {
+      "type": "string",
+      "description": "Trigger ID that must evaluate true for the area to activate. Empty = always active."
+    },
+    "saveNamespace": {
+      "type": "string",
+      "description": "Override for EFL save namespace prefix. Defaults to EFL/<modId>/area/<id>."
+    },
+    "entryEvent": {
+      "type": "string",
+      "description": "CutsceneDef ID fired when the player enters this area."
+    },
+    "exitEvent": {
+      "type": "string",
+      "description": "CutsceneDef ID fired when the player leaves this area."
+    }
   }
 }

@@ -6,8 +6,8 @@
   <br />
   <sub>by Yoru — runtime expansion framework for fields of mistria</sub>
   <br /><br />
-  <a href="#"><img src="https://img.shields.io/badge/EFL-v1.0.0--pre.3-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-v1.0.0--pre.3%20prerelease-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/EFL-v2.0.0-B4A7D6?style=flat-square&labelColor=2D2D2D" alt="EFL Version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/status-v2.0.0%20era-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Status" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-windows-A4C2F4?style=flat-square&labelColor=2D2D2D" alt="Platform" /></a>
   <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B%2020%20%7C%20Rust-B6D7A8?style=flat-square&labelColor=2D2D2D" alt="Languages" /></a>
 </p>
@@ -27,8 +27,8 @@ EFL is a **runtime expansion framework** for [Fields of Mistria](https://store.s
 
 ```
 ┌──────────────────────────────────────────────┐
-│              content packs (.efl)            │
-│         json manifests + asset folders       │
+│      content packs (.efpack / loose)         │
+│       manifests · json · runtime data        │
 ├──────────────────────────────────────────────┤
 │                     efl                      │
 │     bootstrap · services · registries        │
@@ -44,7 +44,7 @@ EFL is a **runtime expansion framework** for [Fields of Mistria](https://store.s
 
 ## what you can build
 
-EFL v1 supports fully declarative content packs — no C++ or GML required:
+EFL currently supports declarative runtime content packs — no C++ or GML required for the core content surface:
 
 | feature | what it does |
 |:--------|:-------------|
@@ -82,15 +82,16 @@ All content is defined through JSON files validated against schemas at load time
 | ![json-schema-validator](https://img.shields.io/badge/json--schema--validator-v2.3.0-A4C2F4?style=flat-square&labelColor=2D2D2D) | `2.3.0` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 | ![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-D5A6BD?style=flat-square&labelColor=2D2D2D) | `C++20` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 
-### tui — rust dependencies
+### devkit — rust dependencies
 
 | crate | version | compatible |
 |:------|:--------|:-----------|
-| ![ratatui](https://img.shields.io/badge/ratatui-0.29.0-FFD6E0?style=flat-square&labelColor=2D2D2D) | `0.29.0` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
-| ![crossterm](https://img.shields.io/badge/crossterm-0.28.1-E2CBFF?style=flat-square&labelColor=2D2D2D) | `0.28.1` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
-| ![serde](https://img.shields.io/badge/serde-1.0.228-A4C2F4?style=flat-square&labelColor=2D2D2D) | `1.0.228` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
-| ![serde_json](https://img.shields.io/badge/serde__json-1.0.149-D5A6BD?style=flat-square&labelColor=2D2D2D) | `1.0.149` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
-| ![windows](https://img.shields.io/badge/windows-0.58.0-B4A7D6?style=flat-square&labelColor=2D2D2D) | `0.58.0` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
+| ![egui](https://img.shields.io/badge/egui-0.29-FFD6E0?style=flat-square&labelColor=2D2D2D) | `0.29` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
+| ![eframe](https://img.shields.io/badge/eframe-0.29-E2CBFF?style=flat-square&labelColor=2D2D2D) | `0.29` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
+| ![notify](https://img.shields.io/badge/notify-6-A4C2F4?style=flat-square&labelColor=2D2D2D) | `6` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
+| ![serde](https://img.shields.io/badge/serde-1.x-D5A6BD?style=flat-square&labelColor=2D2D2D) | `1.x` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
+| ![zip](https://img.shields.io/badge/zip-2-B4A7D6?style=flat-square&labelColor=2D2D2D) | `2` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
+| ![windows](https://img.shields.io/badge/windows-0.58.0-B6D7A8?style=flat-square&labelColor=2D2D2D) | `0.58.0` | ![yes](https://img.shields.io/badge/-✓-B6D7A8?style=flat-square) |
 
 <br />
 
@@ -106,7 +107,7 @@ Seven layers, each with a single responsibility:
 | `D` | **feature registries** | areas, warps, resources, crafting, NPCs, quests, dialogue, story |
 | `E` | **content model** | declarative JSON definitions for all content types |
 | `F` | **ipc** | cross-mod communication channels (versioned, declared in manifest) |
-| `G` | **tooling** | schema validation, debug console, TUI monitor |
+| `G` | **tooling** | schema validation, devkit, runtime monitor |
 
 <br />
 
@@ -123,14 +124,13 @@ efl/
 │   │       └── ipc/          pipe writer, channel broker
 │   ├── src/         implementation (mirrors include/)
 │   ├── vendor/      aurie + yytk sdks
-│   └── tests/       google test suite (89 tests)
-├── tui/             rust tui loader and monitor (cargo)
+│   └── tests/       google test suite
+├── devkit/          rust egui devkit desktop app (cargo)
 │   └── src/
-│       ├── phases/      boot · diagnostics · monitor
-│       ├── widgets/     panel · cards · bars · lists
-│       ├── diagnostics/ coded diagnostic system
-│       ├── ipc.rs       named pipe reader
-│       └── demo.rs      mock data for visual testing
+│       ├── tabs/        packs · diagnostics · creation kit
+│       ├── pack/        packer · inspector · validator · watcher
+│       ├── pipe/        named pipe reader / discovery
+│       └── app.rs       main devkit shell
 ├── schemas/         json schema files (draft 2020-12)
 └── docs/
 ```
@@ -139,7 +139,9 @@ efl/
 
 ## content packs
 
-Mods declare their content through `.efl` manifests and organized asset folders:
+Mods can be worked on as loose folders during development and compiled into `.efpack` artifacts for distribution and runtime loading.
+
+Loose development layout:
 
 ```
 my-mod/
@@ -156,37 +158,29 @@ my-mod/
 └── sprites/              sprite sheets + assets
 ```
 
+At runtime, EFL can also load packaged `.efpack` content by extracting the archive and reading the embedded `manifest.efl`.
+
 All definitions are validated against the JSON schemas in `schemas/` at load time. Invalid content emits structured diagnostic codes without crashing the game.
 
 <br />
 
-## tui
+## devkit
 
-Display-only terminal interface. Three phases:
+The DevKit grew out of the old TUI monitor and is now the current desktop authoring tool.
 
-**`BOOT`** — animated startup sequence as the engine initializes subsystems
+Current DevKit capabilities:
 
-**`DIAGNOSTICS`** — structured validation report with per-subsystem status cards and coded errors (`MANIFEST-E001`, `HOOK-W003`, etc.)
+- pack loose content into `.efpack`
+- inspect `.efpack`
+- validate manifests
+- watch projects and auto-repack
+- display live runtime diagnostics from the engine pipe
 
-**`MONITOR`** — live dashboard showing active hooks, recent events, save operations, and loaded mods
+The runtime monitor path still exists through the named pipe (`\\.\pipe\efl-{pid}`), but it now lives inside the desktop DevKit rather than as the project's primary end-user UI.
 
-### demo mode
+### current direction
 
-Run the TUI with mock data to preview all three phases without the game running:
-
-```bash
-cd tui && cargo run -- --demo
-```
-
-Press `Ctrl+C` to exit at any time.
-
-### connecting to the engine
-
-The engine DLL writes JSON Lines to a named pipe (`\\.\pipe\efl-{pid}`). The TUI connects and reads passively:
-
-```bash
-cd tui && cargo run -- --pipe \\.\pipe\efl-12345
-```
+The full DevKit / compiler / validator direction is tracked in `ROADMAP.md` under `V2.5`.
 
 <br />
 
@@ -200,10 +194,10 @@ cmake -B build
 cmake --build build
 ```
 
-### tui
+### devkit
 
 ```bash
-cd tui
+cd devkit
 cargo build --release
 ```
 
@@ -211,6 +205,7 @@ cargo build --release
 
 ```bash
 cd engine && ctest --test-dir build --output-on-failure
+cd devkit && cargo test
 ```
 
 <br />
@@ -231,27 +226,14 @@ Categories: `BOOT` · `MANIFEST` · `HOOK` · `AREA` · `WARP` · `RESOURCE` · 
 
 ## roadmap
 
-| phase | milestone | status |
-|:-----:|:----------|:-------|
-| 0 | bootstrap, manifest parser, logging | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 1 | engine bridge (hooks, room tracker, routines) | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 2 | core services (events, saves, triggers) | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 3 | area / warp mvp | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 4 | resources mvp | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 5 | quests / unlocks mvp | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 6 | npc mvp (local npcs) | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 7 | crafting / story integration | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
-| 8 | world state, cross-mod ipc | ![done](https://img.shields.io/badge/-done-B6D7A8?style=flat-square) |
+The full roadmap now lives in [`ROADMAP.md`](ROADMAP.md).
 
-### v2 (planned)
+It tracks:
 
-| feature | status |
-|:--------|:-------|
-| script injection (custom NPC behaviors, player abilities) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
-| world NPCs (global schedules, hearts, gifts) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
-| native room creation | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
-| hot-reload for development | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
-| creation kit (visual content pack editor) | ![planned](https://img.shields.io/badge/-planned-E2CBFF?style=flat-square) |
+- `V2` runtime completion
+- `V2.5` full DevKit
+- `V3` further Fields of Mistria runtime systems
+- `V4` Creation Kit era
 
 <br />
 

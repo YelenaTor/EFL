@@ -1,6 +1,15 @@
 # Examples
 
-This page walks through the `examples/hello_adventurer/` pack — a complete, minimal EFL Pack that demonstrates areas, warps, NPCs, dialogue, triggers, and events working together.
+This page walks through two reference workspaces under `examples/`:
+
+- [`examples/hello_adventurer/`](#hello-adventurer-efpack) — a complete, minimal `.efpack` covering areas, warps, NPCs, dialogue, triggers, story events, and the V3 calendar pilot.
+- [`examples/hello_compat/`](#hello-compat-efdat) — a `.efdat` compatibility artifact that declares `requires` / `optional` / `conflicts` relationships between EFL packs and a MOMI mod. Shipping no content of its own; the canonical reference for the third-party shim model.
+
+Both workspaces are also CI fixtures — every push runs `efl-pack` against them, so the schemas, builder, and validator stay honest against working examples.
+
+## Hello Adventurer (`.efpack`)
+
+This walks through the `examples/hello_adventurer/` pack.
 
 ## Pack Overview
 
@@ -19,8 +28,10 @@ examples/hello_adventurer/
 │   └── auri_clone_dialogue.json
 ├── triggers/
 │   └── talked_triggers.json
-└── events/
-    └── welcome_event.json
+├── events/
+│   └── welcome_event.json
+└── calendar/
+    └── spring_first_visit.json
 ```
 
 ## File-by-File Walkthrough
@@ -29,29 +40,24 @@ examples/hello_adventurer/
 
 ```json
 {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "modId": "com.efl.example.hello-adventurer",
     "name": "Hello, Adventurer!",
-    "version": "1.0.0-pre.3",
-    "eflVersion": "1.0.0-pre.3",
-    "features": {
-        "areas": true,
-        "warps": true,
-        "npcs": true,
-        "triggers": true,
-        "dialogue": true
-    },
+    "version": "1.0.0",
+    "eflVersion": "1.0.0",
+    "author": "EFL Team",
+    "description": "Example EFL content pack demonstrating areas, NPCs, dialogue, and story events.",
+    "features": ["areas", "warps", "npcs", "triggers", "dialogue", "story", "calendar"],
     "settings": {
         "strictMode": true,
-        "areaBackend": "hijacked",
-        "saveScope": "EFL/com.efl.example.hello-adventurer"
+        "areaBackend": "hijacked"
     }
 }
 ```
 
-The manifest declares exactly which subsystems the pack uses. With `strictMode: true`, EFL would reject any attempt to register content for undeclared features (e.g., trying to add a quest without `"quests": true`).
+The manifest declares exactly which subsystems the pack uses via the `features` array. With `strictMode: true`, EFL would reject any attempt to register content for undeclared features (e.g., trying to add a quest without `"quests"` in the array).
 
-Only the features actually used are set to `true` — resources, crafting, quests, story, and IPC are all `false` (omitted above for brevity; the actual file includes all 12 booleans).
+Only the features actually used are listed — resources, crafting, quests, and IPC are all omitted.
 
 ### areas/example_room.json
 
@@ -138,16 +144,32 @@ Five simple `flagSet` triggers, one per conversation tier. Note this file contai
 ```json
 {
     "id": "example_room_welcome",
-    "mode": "nativeBridge",
     "trigger": "",
-    "commands": [
-        { "type": "dialogue", "npc": "auri_clone", "line": "Huh? How did you get in here? ...Oh well. Welcome, I guess!" },
-        { "type": "setFlag", "flag": "example_room_visited" }
-    ]
+    "once": true,
+    "onFire": {
+        "setFlags": ["example_room_visited"]
+    }
 }
 ```
 
-A one-time welcome event that fires when the player first enters the room. It uses `nativeBridge` mode to play through the game's built-in dialogue system, then sets a flag to track that the room has been visited.
+The EFL eligibility declaration for the welcome cutscene. `trigger` is empty so it is unconditional — the cutscene is always eligible on first entry. `once: true` means EFL blocks it from firing a second time once the flag is set.
+
+The cutscene content itself (Auri's greeting dialogue, camera moves) is authored in your MOMI companion mod's Mist file (`__mist__.json`), not here. EFL's job is only to say "yes, play it now" and set `example_room_visited` when it does.
+
+### calendar/spring_first_visit.json
+
+```json
+{
+    "id": "hello_adventurer_spring_kickoff",
+    "displayName": "Spring Kickoff Reminder",
+    "season": "spring",
+    "dayOfSeason": 1,
+    "lifecycle": "once",
+    "onActivate": "example_room_welcome"
+}
+```
+
+The V3 calendar pilot in action. Once per save, on Spring 1, EFL fires the `example_room_welcome` story event — even if the player never enters the example room. `lifecycle: "once"` keeps it from re-firing every Spring 1, and the empty `condition` field means it's unconditional. Adding `"calendar"` to the manifest's `features` array is what unlocks the `calendar/` folder loader at boot.
 
 ## How the Flag Pattern Works
 
@@ -169,5 +191,78 @@ Some ideas for experimenting with this pack:
 - **Add a new dialogue tier**: Create entries with a `flag:talked_six` condition and add a matching trigger
 - **Gate the warp**: Set `requireTrigger` on the warp to a quest completion trigger, so players must complete something before entering
 - **Add a second NPC**: Create another NPC definition in `npcs/` with its own dialogue set
-- **Add resources**: Enable `"resources": true` in the manifest and create resource nodes in `resources/`
+- **Add resources**: Add `"resources"` to the features array in the manifest and create resource nodes in `resources/`
 - **Change the host room**: Try a different `hostRoom` value to see how the area looks in a different game room
+- **Add another calendar event**: Drop a second file in `calendar/` for `dayOfSeason: 14` to fire the welcome again at the season's halfway point
+
+## Hello Compat (`.efdat`)
+
+The `examples/hello_compat/` workspace is a tiny `.efdat` reference. It ships **no content** of its own — just a `manifest.efdat` declaring relationships:
+
+```
+examples/hello_compat/
+└── manifest.efdat
+```
+
+```json
+{
+    "schemaVersion": 1,
+    "datId": "com.efl.example.compat.hello-adventurer.x.fluffkin-mod",
+    "name": "Hello Adventurer x Fluffkin Compatibility",
+    "version": "1.0.0",
+    "eflVersion": "1.0.0",
+    "author": "EFL Team",
+    "description": "Reference .efdat showing how a third party can declare compatibility relationships between an EFL pack and a MOMI mod without shipping any content of their own.",
+    "relationships": [
+        {
+            "type": "requires",
+            "target": {
+                "kind": "efpack",
+                "id": "com.efl.example.hello-adventurer",
+                "versionRange": "^1.0.0"
+            },
+            "reason": "This artifact attaches calendar wiring to the Hello Adventurer pack."
+        },
+        {
+            "type": "requires",
+            "target": {
+                "kind": "momi",
+                "id": "com.example.fluffkin-mod",
+                "versionRange": ">=1.0.0"
+            },
+            "reason": "Fluffkin Mod ships the portrait pack and __mist__ cutscene Hello Adventurer references."
+        },
+        {
+            "type": "optional",
+            "target": {
+                "kind": "efpack",
+                "id": "com.example.seasonal-overhaul",
+                "versionRange": "^0.5.0"
+            }
+        },
+        {
+            "type": "conflicts",
+            "target": {"kind": "efpack", "id": "com.example.silent-room"},
+            "reason": "Silent Room replaces the same hostRoom, so the example NPC would never spawn alongside it."
+        }
+    ]
+}
+```
+
+### When to ship a `.efdat`
+
+`.efdat` artifacts exist for the case where the **relationship** is the deliverable:
+
+- A third party noticing two packs work better together — they can ship a `.efdat` declaring `optional` and let users opt in.
+- A pack author calling out a `conflicts` pair before shipping a hard fix — `.efdat` surfaces a clean error instead of silent breakage.
+- A studio bundling `requires` chains for an internal modpack — one `.efdat` proves the loadout, no source code needed.
+
+### Behaviour at load time
+
+EFL evaluates relationships the same way it does manifest dependencies:
+
+- `requires` missing → `MANIFEST-E003` and the artifact stays inactive.
+- `conflicts` present → `MANIFEST-E004` with the `reason` text shown to the user.
+- `optional` missing → silent (or a notice in the DevKit's relationships view).
+
+When all `requires` resolve, EFL marks the `.efdat` active and the relationship view in the DevKit lights up the matching pack ↔ MOMI link.

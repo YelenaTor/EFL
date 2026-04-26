@@ -1,0 +1,46 @@
+{
+    "schemaVersion": 1,
+    "datId": "com.efl.example.compat.hello-adventurer.x.fluffkin-mod",
+    "name": "Hello Adventurer x Fluffkin Compatibility",
+    "version": "1.0.0",
+    "eflVersion": "1.0.0",
+    "author": "EFL Team",
+    "description": "Reference .efdat showing how a third party can declare compatibility relationships between an EFL pack and a MOMI mod without shipping any content of their own. Loads only when both targets are present and emits a clear conflict error when an incompatible mod is also installed.",
+    "relationships": [
+        {
+            "type": "requires",
+            "target": {
+                "kind": "efpack",
+                "id": "com.efl.example.hello-adventurer",
+                "versionRange": "^1.0.0"
+            },
+            "reason": "This artifact attaches calendar wiring to the Hello Adventurer pack."
+        },
+        {
+            "type": "requires",
+            "target": {
+                "kind": "momi",
+                "id": "com.example.fluffkin-mod",
+                "versionRange": ">=1.0.0"
+            },
+            "reason": "Fluffkin Mod ships the portrait pack and __mist__ cutscene Hello Adventurer references."
+        },
+        {
+            "type": "optional",
+            "target": {
+                "kind": "efpack",
+                "id": "com.example.seasonal-overhaul",
+                "versionRange": "^0.5.0"
+            },
+            "reason": "When Seasonal Overhaul is present, the Hello Adventurer cutscene gets an extra spring intro line."
+        },
+        {
+            "type": "conflicts",
+            "target": {
+                "kind": "efpack",
+                "id": "com.example.silent-room"
+            },
+            "reason": "Silent Room replaces the same hostRoom, so the example NPC would never spawn alongside it."
+        }
+    ]
+}

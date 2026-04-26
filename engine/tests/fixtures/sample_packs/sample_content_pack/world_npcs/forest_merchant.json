@@ -1,11 +1,12 @@
 {
   "id": "forest_merchant",
   "displayName": "Forest Merchant",
+  "objectName": "par_NPC",
   "portraitAsset": "spr_merchant",
   "defaultAreaId": "crystal_cave",
-  "defaultAnchorId": "entrance",
+  "defaultAnchorId": "640,320",
   "schedule": [
-    { "timeFrom": 800, "timeTo": 1200, "areaId": "crystal_cave", "anchorId": "entrance" },
-    { "timeFrom": 1300, "timeTo": 1800, "areaId": "crystal_cave", "anchorId": "market" }
+    { "fromSeconds": 21600, "toSeconds": 43200, "areaId": "crystal_cave", "anchorId": "640,320" },
+    { "fromSeconds": 46800, "toSeconds": 64800, "areaId": "crystal_cave", "anchorId": "800,400" }
   ]
 }

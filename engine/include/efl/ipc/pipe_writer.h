@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <string>
 #include <mutex>
 #include <nlohmann/json.hpp>
@@ -21,6 +22,13 @@ private:
     void* pipeHandle_ = nullptr;
     mutable std::mutex mutex_;
     bool connected_ = false;
+    bool disconnectedLogged_ = false; // one-time log on first drop
+    std::chrono::steady_clock::time_point lastReconnectAttempt_{};
+
+    // Attempt to accept a new client connection. Called from write() when disconnected.
+    // Rate-limited to once per second to avoid hammering the pipe handle.
+    // Returns true if a client connected.
+    bool tryReconnect();
 };
 
 } // namespace efl

@@ -1,8 +1,8 @@
 # IPC Protocol
 
-EFL uses two IPC mechanisms: a named pipe for engine-to-TUI communication, and a channel broker for cross-mod messaging.
+EFL uses two IPC mechanisms: a named pipe for engine-to-DevKit communication, and a channel broker for cross-mod messaging.
 
-## Engine-to-TUI Pipe
+## Engine-to-DevKit Pipe
 
 ### Connection
 
@@ -12,11 +12,11 @@ The engine creates a Windows named pipe at startup:
 \\.\pipe\efl-{pid}
 ```
 
-Where `{pid}` is the game's process ID. The TUI connects to this pipe and reads passively.
+Where `{pid}` is the game's process ID. The DevKit connects to this pipe and reads passively.
 
 ### Best-Effort Delivery
 
-The pipe is best-effort. If the TUI is not connected or fails to read, the engine continues normally. Messages are not queued or retried — the TUI sees whatever it reads in real time.
+The pipe is best-effort. If the DevKit is not connected or fails to read, the engine continues normally. Messages are not queued or retried — the DevKit sees whatever it reads in real time.
 
 ### Format
 
@@ -162,7 +162,7 @@ Emitted when a mod's status changes.
 
 ### phase.transition
 
-Emitted when the TUI should switch display phases.
+Emitted when the DevKit should switch between boot, diagnostics, and monitor views.
 
 ```json
 {
@@ -175,6 +175,105 @@ Emitted when the TUI should switch display phases.
 ```
 
 - `phase`: `"boot"`, `"diagnostics"`, `"monitor"`
+
+### command_pipe.ready
+
+Emitted once the inbound command pipe is bound. Tells DevKit that explicit reload signaling is available for this engine session.
+
+```json
+{
+    "type": "command_pipe.ready",
+    "timestamp": "...",
+    "payload": {
+        "name": "\\\\.\\pipe\\efl-12345-cmd",
+        "protocol": "json-lines",
+        "version": 1
+    }
+}
+```
+
+### reload.requested / reload.complete
+
+Emitted before and after a reload triggered by a DevKit `reload` command (see "Inbound Command Pipe" below).
+
+```json
+{
+    "type": "reload.complete",
+    "timestamp": "...",
+    "payload": {
+        "path": "C:\\game\\mods\\efl",
+        "reason": "devkit-pack",
+        "files": 14,
+        "failures": 0,
+        "status": "ok"
+    }
+}
+```
+
+`reason` is whatever the DevKit passed in the command payload (e.g. `devkit-pack`, `devkit-watch`, `devkit-manual`).
+
+### pong
+
+Echoes a `ping` command back over the event pipe. Used as a liveness probe for the inbound channel.
+
+### capabilities.snapshot
+
+Broadcast once after `phase.transition: boot complete`, and re-broadcast on demand when the DevKit sends a `caps` command. Tells the DevKit which scriptHook handlers, feature tags, and runtime capability flags this engine build actually supports.
+
+```json
+{
+    "type": "capabilities.snapshot",
+    "timestamp": "...",
+    "payload": {
+        "eflVersion": "1.0.0",
+        "handlers": ["efl_resource_despawn"],
+        "features": [
+            "areas", "warps", "npcs", "resources", "crafting", "quests",
+            "dialogue", "story", "triggers", "assets", "ipc"
+        ],
+        "hookKinds": ["yyc_script", "frame", "detour"],
+        "flags": {
+            "dungeonVoteInjection": false,
+            "worldNpcSchedules": false,
+            "nativeRoomBackend": false,
+            "assetInjection": false,
+            "scriptHookCallbacks": true,
+            "scriptHookInject": false
+        }
+    }
+}
+```
+
+The DevKit caches the most recent snapshot on `EngineState` and feeds it to `validate_manifest_with_capabilities`. When a snapshot is present:
+
+- `MANIFEST-W011` (unknown feature) is checked against `payload.features` instead of the DevKit's static list.
+- `HOOK-W004` (unknown handler) is checked against `payload.handlers` instead of the DevKit's static list.
+
+If no snapshot has arrived (e.g. headless `efl-pack` runs, no engine connected), the DevKit falls back to its build-time defaults.
+
+## Inbound Command Pipe (DevKit -> Engine)
+
+In addition to the outbound event pipe, the engine binds a sibling inbound pipe at:
+
+```
+\\.\pipe\efl-{pid}-cmd
+```
+
+This pipe accepts JSON Lines, one command envelope per line:
+
+```json
+{"type":"reload","payload":{"reason":"devkit-pack"}}
+```
+
+| Command | Payload | Effect |
+|:--------|:--------|:-------|
+| `reload` | `{ "reason": "..." }` | Re-walks the EFL content directory, dispatches every `.json` through the existing per-file reload path. Emits `reload.requested` and `reload.complete` on the event pipe. |
+| `ping`   | any | Engine emits a matching `pong` envelope. Used to confirm the command pipe is alive end-to-end. |
+| `caps` (alias `capabilities`) | none | Engine re-broadcasts the latest `capabilities.snapshot` event. Use this when the DevKit attaches mid-session and missed the boot-time emission. |
+
+The DevKit closes the connection after each command; the engine then resets the pipe so the next command starts a fresh stream. Unknown command types are ignored (and the engine emits `command.unknown` for visibility).
+
+If the engine cannot bind the command pipe (e.g. a stale handle held by another process), it emits diagnostic `RELOAD-W002` and falls back to file-watcher-only reload. The DevKit's "Reload engine" button reports the failure inline.
 
 ## Cross-Mod IPC (ChannelBroker)
 

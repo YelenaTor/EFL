@@ -31,3 +31,23 @@ TEST(AreaRegistry, ListAreas) {
     registry.registerArea({.id = "b", .displayName = "B"});
     EXPECT_EQ(registry.allAreas().size(), 2);
 }
+
+TEST(AreaRegistry, NativeAreaParsed) {
+    auto area = efl::AreaDef::fromJson(loadFixture("sample_area_native.json"));
+    ASSERT_TRUE(area.has_value());
+    EXPECT_EQ(area->id,          "fluffkin_hollow");
+    EXPECT_EQ(area->backend,     efl::AreaBackend::Native);
+    EXPECT_EQ(area->hostRoom,    "rm_forest_trigger");
+    EXPECT_EQ(area->roomWidth,   1280);
+    EXPECT_EQ(area->roomHeight,  720);
+    EXPECT_EQ(area->music,       "mus_hollow_ambient");
+    EXPECT_EQ(area->entryAnchor, "512,360");
+}
+
+TEST(AreaRegistry, DefaultRoomDimensions) {
+    nlohmann::json j = {{"id", "small_room"}, {"displayName", "Small"}};
+    auto area = efl::AreaDef::fromJson(j);
+    ASSERT_TRUE(area.has_value());
+    EXPECT_EQ(area->roomWidth,  1024);
+    EXPECT_EQ(area->roomHeight, 768);
+}

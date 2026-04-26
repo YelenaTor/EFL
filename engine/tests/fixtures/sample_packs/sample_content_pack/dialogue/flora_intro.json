@@ -2,8 +2,22 @@
     "id": "flora_intro",
     "npc": "flora_spirit",
     "entries": [
-        {"id": "greet", "text": "Welcome to the Crystal Cave!", "portrait": "flora_happy"},
-        {"id": "quest_hint", "text": "I've lost something precious...", "portrait": "flora_sad",
-         "condition": "flag:met_flora"}
+        {
+            "id": "greet",
+            "locKey": "Conversations/Mods/com.test.crystalmod/flora_greet",
+            "portrait": "spr_portrait_flora_happy"
+        },
+        {
+            "id": "quest_hint",
+            "locKey": "Conversations/Mods/com.test.crystalmod/flora_quest_hint",
+            "portrait": "spr_portrait_flora_sad",
+            "condition": "flag:met_flora"
+        },
+        {
+            "id": "cave_open",
+            "text": "The cave is open now... ^blue^be careful^blue^ in there.",
+            "portrait": "spr_portrait_flora_worried",
+            "condition": "flag:cave_revealed"
+        }
     ]
 }

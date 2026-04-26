@@ -2,21 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/dialogue.schema.json",
   "title": "EFL Dialogue Definition",
-  "description": "Schema for dialogue set definitions",
+  "description": "Schema for dialogue set definitions. EFL owns which line is shown to whom under what conditions — the text itself either lives in MOMI localisation files (via locKey) or is passed through raw (via text).",
   "type": "object",
-  "required": ["id"],
+  "required": ["id", "npc"],
   "properties": {
-    "id": { "type": "string" },
-    "npc": { "type": "string" },
+    "id": {
+      "type": "string",
+      "description": "Unique dialogue set identifier."
+    },
+    "npc": {
+      "type": "string",
+      "description": "EFL NPC ID this dialogue set is bound to."
+    },
     "entries": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "text": { "type": "string" },
-          "portrait": { "type": "string" },
-          "condition": { "type": "string" }
+          "id": {
+            "type": "string",
+            "description": "Unique entry identifier within this dialogue set."
+          },
+          "locKey": {
+            "type": "string",
+            "description": "FoM localisation key resolved at runtime against MOMI-injected localisation. Follows the convention: 'Conversations/Mods/<modId>/<entry>'. Takes priority over text when both are present. This is the preferred field — EFL owns the key, MOMI owns the text.",
+            "examples": ["Conversations/Mods/dev.yoru.crystal-caves/flora_intro_01"]
+          },
+          "text": {
+            "type": "string",
+            "description": "Raw dialogue text, passed through to FoM unchanged. FoM inline markup is supported: ^red^text^red^, $gold$text$gold$, =orange=text=orange=, #dark#text#dark#. Use locKey instead when localisation is needed."
+          },
+          "portrait": {
+            "type": "string",
+            "description": "FoM portrait asset name (e.g. 'spr_portrait_flora'). References a game asset — EFL does not own portrait sprites."
+          },
+          "condition": {
+            "type": "string",
+            "description": "Trigger ID or flag literal ('flag:name') evaluated at runtime. Empty = always shown."
+          }
         }
       }
     }

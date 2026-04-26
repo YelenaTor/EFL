@@ -2,6 +2,7 @@
 .temp/
 CLAUDE.md
 .claude/
+.cursor/
 
 # C++ build artifacts
 engine/build/
@@ -15,7 +16,7 @@ engine/vendor/*/build/
 *.ilk
 
 # Rust build artifacts
-tui/target/
+devkit/target/
 
 # IDE
 .vs/
@@ -26,9 +27,17 @@ CMakeUserPresets.json
 # CMake test discovery artifacts
 cmake_test_discovery_*.json
 
-# Worktrees
-.worktrees/
-
 # Local-only docs
-docs/superpowers/
 docs/EFL_Technical_Reference.pdf
+efdat_jsonc.txt
+
+# Scratch / probe output
+points.json
+probe_output.txt
+
+# Runtime output (generated during local game/test runs)
+engine/EFL/logs/
+
+# Local release bundles
+EFL-*.zip
+EFL-DevKit-*.zip

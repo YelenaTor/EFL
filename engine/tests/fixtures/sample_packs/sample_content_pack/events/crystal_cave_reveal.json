@@ -1,9 +1,9 @@
 {
     "id": "crystal_cave_reveal",
-    "mode": "nativeBridge",
     "trigger": "has_cave_key",
-    "commands": [
-        {"type": "dialogue", "npc": "minerva", "line": "The cave is open!"},
-        {"type": "setFlag", "flag": "cave_revealed"}
-    ]
+    "once": true,
+    "onFire": {
+        "setFlags": ["cave_revealed"],
+        "startQuest": "find_crystals"
+    }
 }

@@ -12,6 +12,7 @@ std::optional<WorldNpcDef> WorldNpcDef::fromJson(const nlohmann::json& j) {
     def.id          = j.at("id").get<std::string>();
     def.displayName = j.at("displayName").get<std::string>();
 
+    if (j.contains("objectName"))      def.objectName      = j.at("objectName").get<std::string>();
     if (j.contains("portraitAsset"))   def.portraitAsset   = j.at("portraitAsset").get<std::string>();
     if (j.contains("defaultAreaId"))   def.defaultAreaId   = j.at("defaultAreaId").get<std::string>();
     if (j.contains("defaultAnchorId")) def.defaultAnchorId = j.at("defaultAnchorId").get<std::string>();
@@ -25,10 +26,10 @@ std::optional<WorldNpcDef> WorldNpcDef::fromJson(const nlohmann::json& j) {
     if (j.contains("schedule") && j.at("schedule").is_array()) {
         for (const auto& item : j.at("schedule")) {
             NpcScheduleEntry entry;
-            if (item.contains("timeFrom"))  entry.timeFrom  = item.at("timeFrom").get<int>();
-            if (item.contains("timeTo"))    entry.timeTo    = item.at("timeTo").get<int>();
-            if (item.contains("areaId"))    entry.areaId    = item.at("areaId").get<std::string>();
-            if (item.contains("anchorId"))  entry.anchorId  = item.at("anchorId").get<std::string>();
+            if (item.contains("fromSeconds")) entry.fromSeconds = item.at("fromSeconds").get<int>();
+            if (item.contains("toSeconds"))   entry.toSeconds   = item.at("toSeconds").get<int>();
+            if (item.contains("areaId"))      entry.areaId      = item.at("areaId").get<std::string>();
+            if (item.contains("anchorId"))    entry.anchorId    = item.at("anchorId").get<std::string>();
             def.schedule.push_back(std::move(entry));
         }
     }
@@ -55,31 +56,58 @@ std::vector<const WorldNpcDef*> WorldNpcRegistry::worldNpcsForArea(
         const std::string& areaId, int timeOfDay) const {
     std::vector<const WorldNpcDef*> result;
     for (const auto& npc : npcs_) {
-        bool matched = false;
-        for (const auto& entry : npc.schedule) {
-            if (entry.areaId == areaId &&
-                timeOfDay >= entry.timeFrom &&
-                timeOfDay <= entry.timeTo) {
-                result.push_back(&npc);
-                matched = true;
-                break;
-            }
-        }
-        // No schedule entries — fall back to defaultAreaId
-        if (!matched && npc.schedule.empty() && npc.defaultAreaId == areaId) {
+        auto [activeArea, activeAnchor] = activeLocationForNpc(npc.id, timeOfDay);
+        if (activeArea == areaId)
             result.push_back(&npc);
-        }
     }
     return result;
+}
+
+const NpcScheduleEntry* WorldNpcRegistry::activeEntryForNpc(
+        const std::string& id, int timeOfDay) const {
+    auto it = index_.find(id);
+    if (it == index_.end()) return nullptr;
+    const WorldNpcDef& npc = npcs_[it->second];
+    for (const auto& entry : npc.schedule) {
+        if (timeOfDay >= entry.fromSeconds && timeOfDay < entry.toSeconds)
+            return &entry;
+    }
+    return nullptr;
+}
+
+std::pair<std::string, std::string> WorldNpcRegistry::activeLocationForNpc(
+        const std::string& id, int timeOfDay) const {
+    auto it = index_.find(id);
+    if (it == index_.end()) return {};
+    const WorldNpcDef& npc = npcs_[it->second];
+    const NpcScheduleEntry* entry = activeEntryForNpc(id, timeOfDay);
+    if (entry) return {entry->areaId, entry->anchorId};
+    return {npc.defaultAreaId, npc.defaultAnchorId};
+}
+
+void WorldNpcRegistry::setLastKnown(const std::string& npcId,
+                                     const std::string& areaId,
+                                     const std::string& anchorId) {
+    lastKnownArea_[npcId]   = areaId;
+    lastKnownAnchor_[npcId] = anchorId;
 }
 
 const std::vector<WorldNpcDef>& WorldNpcRegistry::allWorldNpcs() const {
     return npcs_;
 }
 
-void WorldNpcRegistry::tickSchedule(int /*currentTimeOfDay*/) {
-    // TODO: teleport WorldNpcs to their scheduled anchor when FoM time hook is wired.
-    // For now this is a stub — actual instance movement requires YYTK hooks in Layer B.
+void WorldNpcRegistry::tickSchedule(int currentTimeOfDay) {
+    if (!onScheduleChange) return;
+    for (const auto& npc : npcs_) {
+        auto [areaId, anchorId] = activeLocationForNpc(npc.id, currentTimeOfDay);
+        auto& lastArea   = lastKnownArea_[npc.id];
+        auto& lastAnchor = lastKnownAnchor_[npc.id];
+        if (areaId != lastArea || anchorId != lastAnchor) {
+            lastArea   = areaId;
+            lastAnchor = anchorId;
+            onScheduleChange(npc.id, areaId, anchorId);
+        }
+    }
 }
 
 void WorldNpcRegistry::setSaveService(SaveService* saves) {

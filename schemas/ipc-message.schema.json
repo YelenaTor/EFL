@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/ipc-message.schema.json",
   "title": "EFL IPC Message Envelope",
-  "description": "Schema for messages sent from engine DLL to TUI via named pipe (JSON Lines)",
+  "description": "Schema for messages sent from engine DLL to DevKit via named pipe (JSON Lines)",
   "type": "object",
   "required": ["type", "timestamp", "payload"],
   "properties": {
@@ -11,18 +11,30 @@
       "enum": [
         "boot.status",
         "diagnostic",
+        "phase.transition",
+        "efl.version",
         "hook.registered",
         "hook.fired",
         "event.published",
         "save.operation",
         "mod.status",
-        "phase.transition"
+        "area.activated",
+        "npc.spawned",
+        "resource.spawned",
+        "resource.harvested",
+        "warp.status",
+        "item.granted",
+        "story.fired",
+        "story.native_pending",
+        "story.warning",
+        "quest.updated",
+        "dialogue.open",
+        "ipc.channel_published"
       ]
     },
     "timestamp": {
       "type": "string",
-      "format": "date-time",
-      "description": "ISO 8601 UTC timestamp"
+      "description": "Relative timestamp string (e.g. T+12.3s)"
     },
     "payload": {
       "type": "object",

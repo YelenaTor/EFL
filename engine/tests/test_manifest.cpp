@@ -21,11 +21,11 @@ TEST(ManifestParser, RejectInvalidManifest) {
 
 TEST(ManifestParser, ParseFromString) {
     std::string json = R"({
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "modId": "com.test.inline",
         "name": "Inline Test",
         "version": "0.1.0",
-        "eflVersion": "0.2.0"
+        "eflVersion": "1.0.0"
     })";
     auto result = efl::ManifestParser::parseString(json);
     ASSERT_TRUE(result.has_value());
@@ -34,8 +34,8 @@ TEST(ManifestParser, ParseFromString) {
 
 TEST(ManifestParser, VersionCompatibility) {
     efl::Manifest m;
-    m.eflVersion = "0.2.0";
-    EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "0.2.0"));
-    EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "0.3.0"));
-    EXPECT_FALSE(efl::ManifestParser::isCompatible(m, "0.1.0"));
+    m.eflVersion = "1.0.0";
+    EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "1.0.0"));
+    EXPECT_TRUE(efl::ManifestParser::isCompatible(m, "1.1.0"));
+    EXPECT_FALSE(efl::ManifestParser::isCompatible(m, "0.9.0"));
 }

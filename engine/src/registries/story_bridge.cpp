@@ -1,142 +1,154 @@
 #include "efl/registries/story_bridge.h"
 #include "efl/core/trigger_service.h"
 #include "efl/ipc/pipe_writer.h"
-#include <stdexcept>
 
 namespace efl {
 
-std::optional<EventDef> EventDef::fromJson(const nlohmann::json& j) {
-    if (!j.contains("id")) {
+// ── CutsceneDef::fromJson ──────────────────────────────────────────────────
+//
+// Pack event JSON schema:
+//
+//   {
+//     "id":      "crystal_cave_reveal",   // must match __mist__.json function key
+//     "trigger": "has_cave_key",          // EFL trigger id
+//     "once":    true,                    // optional, default true
+//     "onFire": {                         // optional EFL-side effects
+//       "setFlags":    ["cave_revealed"],
+//       "clearFlags":  [],
+//       "startQuest":  "find_crystals",
+//       "advanceQuest": ""
+//     }
+//   }
+//
+// Dialogue, animations, item grants, and FoM quest effects belong in the
+// Mist script (__mist__.json) authored via MOMI — not here.
+
+std::optional<CutsceneDef> CutsceneDef::fromJson(const nlohmann::json& j) {
+    if (!j.contains("id"))
         return std::nullopt;
-    }
 
-    EventDef def;
-    def.id = j.at("id").get<std::string>();
+    CutsceneDef def;
+    def.id      = j.at("id").get<std::string>();
+    def.trigger = j.value("trigger", "");
+    def.once    = j.value("once", true);
 
-    if (j.contains("mode")) {
-        const std::string& mode = j.at("mode").get<std::string>();
-        if (mode == "custom") {
-            def.mode = EventMode::Custom;
-        } else {
-            def.mode = EventMode::NativeBridge;
-        }
-    }
-
-    if (j.contains("trigger")) {
-        def.trigger = j.at("trigger").get<std::string>();
-    }
-
-    if (j.contains("commands")) {
-        for (const auto& cmdJson : j.at("commands")) {
-            EventCommand cmd;
-            cmd.type = cmdJson.at("type").get<std::string>();
-            if (cmdJson.contains("npc"))   cmd.npc   = cmdJson.at("npc").get<std::string>();
-            if (cmdJson.contains("line"))  cmd.line  = cmdJson.at("line").get<std::string>();
-            if (cmdJson.contains("flag"))  cmd.flag  = cmdJson.at("flag").get<std::string>();
-            if (cmdJson.contains("quest")) cmd.quest = cmdJson.at("quest").get<std::string>();
-            def.commands.push_back(cmd);
-        }
+    if (j.contains("onFire")) {
+        const auto& f = j.at("onFire");
+        if (f.contains("setFlags"))
+            def.onFire.setFlags = f.at("setFlags").get<std::vector<std::string>>();
+        if (f.contains("clearFlags"))
+            def.onFire.clearFlags = f.at("clearFlags").get<std::vector<std::string>>();
+        def.onFire.startQuest   = f.value("startQuest", "");
+        def.onFire.advanceQuest = f.value("advanceQuest", "");
+        def.onFire.grantItemId  = f.value("grantItemId",  0);
+        def.onFire.grantItemQty = f.value("grantItemQty", 1);
     }
 
     return def;
 }
 
-void StoryBridge::registerEvent(const EventDef& def) {
-    if (index_.count(def.id)) {
-        events_[index_[def.id]] = def;
-        return;
-    }
-    index_[def.id] = events_.size();
-    events_.push_back(def);
-}
-
-const EventDef* StoryBridge::getEvent(const std::string& id) const {
-    auto it = index_.find(id);
-    if (it == index_.end()) return nullptr;
-    return &events_[it->second];
-}
-
-bool StoryBridge::canFire(const std::string& eventId, const TriggerService& triggers) const {
-    auto it = index_.find(eventId);
-    if (it == index_.end()) return false;
-
-    const EventDef& def = events_[it->second];
-    return def.trigger.empty() || triggers.evaluate(def.trigger);
-}
-
-const std::vector<EventDef>& StoryBridge::allEvents() const {
-    return events_;
-}
+// ── Registration ───────────────────────────────────────────────────────────
 
 void StoryBridge::setPipeWriter(PipeWriter* pipe) {
     pipe_ = pipe;
 }
 
-void StoryBridge::fireEvent(const std::string& eventId, TriggerService& triggers) {
-    if (!canFire(eventId, triggers))
+void StoryBridge::registerCutscene(const CutsceneDef& def) {
+    auto it = index_.find(def.id);
+    if (it != index_.end()) {
+        cutscenes_[it->second] = def;
         return;
-
-    const EventDef& def = events_[index_.at(eventId)];
-
-    // Process each command in sequence.
-    for (const auto& cmd : def.commands) {
-        if (cmd.type == "set_flag") {
-            if (!cmd.flag.empty())
-                triggers.setFlag(cmd.flag, true);
-        } else if (cmd.type == "clear_flag") {
-            if (!cmd.flag.empty())
-                triggers.setFlag(cmd.flag, false);
-        } else if (cmd.type == "dialogue") {
-            // Actual in-game dialogue open is deferred (no confirmed FoM script name yet).
-            // Emit IPC so the DevKit monitor can show dialogue activity.
-            if (pipe_) {
-                pipe_->write("dialogue.open", nlohmann::json{
-                    {"eventId", eventId},
-                    {"npcId",   cmd.npc},
-                    {"lineId",  cmd.line}
-                });
-            }
-        } else if (cmd.type == "start_quest") {
-            if (!cmd.quest.empty() && onQuestStart)
-                onQuestStart(cmd.quest);
-            if (pipe_) {
-                pipe_->write("quest.updated", nlohmann::json{
-                    {"questId", cmd.quest}, {"action", "start"}});
-            }
-        } else if (cmd.type == "advance_quest") {
-            if (!cmd.quest.empty() && onQuestAdvance)
-                onQuestAdvance(cmd.quest);
-            if (pipe_) {
-                pipe_->write("quest.updated", nlohmann::json{
-                    {"questId", cmd.quest}, {"action", "advance"}});
-            }
-        } else {
-            // Unknown command type — emit a warning so DevKit can surface it.
-            if (pipe_) {
-                pipe_->write("story.warning", nlohmann::json{
-                    {"eventId", eventId},
-                    {"message", "Unknown command type: " + cmd.type}
-                });
-            }
-        }
     }
+    index_[def.id] = cutscenes_.size();
+    cutscenes_.push_back(def);
+}
 
-    // NativeBridge: would invoke FoM's StoryExecutor here once script name confirmed.
-    // Emit IPC trace so modders can see the event needs native wiring.
-    if (def.mode == EventMode::NativeBridge) {
-        if (pipe_) {
-            pipe_->write("story.native_pending", nlohmann::json{
-                {"eventId", eventId},
-                {"note", "FoM StoryExecutor call deferred — gml_Script_story_start unconfirmed"}
-            });
-        }
-    }
+const CutsceneDef* StoryBridge::getCutscene(const std::string& id) const {
+    auto it = index_.find(id);
+    if (it == index_.end()) return nullptr;
+    return &cutscenes_[it->second];
+}
+
+const std::vector<CutsceneDef>& StoryBridge::allCutscenes() const {
+    return cutscenes_;
+}
+
+// ── Boot hook ──────────────────────────────────────────────────────────────
+
+void StoryBridge::onLoadCutscenes() {
+    if (!pipe_) return;
+    nlohmann::json keys = nlohmann::json::array();
+    for (const auto& c : cutscenes_)
+        keys.push_back(c.id);
+    pipe_->write("story.cutscenes_registered", nlohmann::json{{"keys", keys}});
+}
+
+// ── Eligibility gate ───────────────────────────────────────────────────────
+
+bool StoryBridge::evaluateEligibility(const std::string& key, TriggerService& triggers) {
+    auto it = index_.find(key);
+    if (it == index_.end())
+        return false; // not an EFL cutscene — let FoM handle it
+
+    const CutsceneDef& def = cutscenes_[it->second];
+
+    if (def.once && seen_.count(key))
+        return false;
+
+    if (!def.trigger.empty() && !triggers.evaluate(def.trigger))
+        return false;
+
+    // Commit: apply EFL-side effects now, before returning true.
+    for (const auto& f : def.onFire.setFlags)
+        triggers.setFlag(f, true);
+    for (const auto& f : def.onFire.clearFlags)
+        triggers.setFlag(f, false);
+    if (!def.onFire.startQuest.empty() && onQuestStart)
+        onQuestStart(def.onFire.startQuest);
+    if (!def.onFire.advanceQuest.empty() && onQuestAdvance)
+        onQuestAdvance(def.onFire.advanceQuest);
+    if (def.onFire.grantItemId > 0 && onItemGrant)
+        onItemGrant(def.onFire.grantItemId, def.onFire.grantItemQty);
+
+    if (def.once)
+        seen_[key] = true;
 
     if (pipe_) {
-        pipe_->write("story.fired", nlohmann::json{
-            {"eventId", eventId},
-            {"commandCount", static_cast<int>(def.commands.size())},
-            {"status", "ok"}
+        pipe_->write("story.cutscene_eligible", nlohmann::json{
+            {"key", key},
+            {"trigger", def.trigger}
+        });
+    }
+
+    return true;
+}
+
+// ── EFL-driven effects (area entry/exit) ──────────────────────────────────
+
+void StoryBridge::fireEffects(const std::string& id, TriggerService& triggers) {
+    if (id.empty()) return;
+    auto it = index_.find(id);
+    if (it == index_.end()) return;
+
+    const CutsceneDef& def = cutscenes_[it->second];
+
+    if (!def.trigger.empty() && !triggers.evaluate(def.trigger))
+        return;
+
+    for (const auto& f : def.onFire.setFlags)
+        triggers.setFlag(f, true);
+    for (const auto& f : def.onFire.clearFlags)
+        triggers.setFlag(f, false);
+    if (!def.onFire.startQuest.empty() && onQuestStart)
+        onQuestStart(def.onFire.startQuest);
+    if (!def.onFire.advanceQuest.empty() && onQuestAdvance)
+        onQuestAdvance(def.onFire.advanceQuest);
+    if (def.onFire.grantItemId > 0 && onItemGrant)
+        onItemGrant(def.onFire.grantItemId, def.onFire.grantItemQty);
+
+    if (pipe_) {
+        pipe_->write("story.effects_fired", nlohmann::json{
+            {"id", id}, {"trigger", def.trigger}
         });
     }
 }

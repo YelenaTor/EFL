@@ -85,10 +85,16 @@ Harvestable, breakable, and forageable nodes that spawn in areas.
 | `id` | string | yes | Unique resource identifier |
 | `kind` | string | yes | `"forageable_node"`, `"breakable_node"`, `"harvestable_node"`, or `"special_interactable"` |
 | `sprite` | string | no | Sprite sheet reference |
-| `yieldTable` | array | no | Items dropped when harvested (each: `item`, `min`, `max`) |
+| `objectName` | string | no | FoM GML object name (e.g. `"obj_ore_node"`). Required for interim spawn via `instance_create_layer`. |
+| `yieldTable` | array | no | Items dropped when harvested (each: `item`, `itemId`, `min`, `max`) |
+| `yieldTable[].item` | string | no | Human-readable item name (used in logs and IPC events) |
+| `yieldTable[].itemId` | integer | no | Numeric FoM item index. Required for actual item granting — see [FoM-Datamined-Insanity](https://github.com/YelenaTor/FoM-Datamined-Insanity) item IDs. Without this, harvest is logged but no item is given. |
+| `yieldTable[].min` | integer | no | Minimum yield quantity (default: 1) |
+| `yieldTable[].max` | integer | no | Maximum yield quantity (default: 1) |
 | `spawnRules` | object | no | Where and when this resource appears |
 | `spawnRules.areas` | array | no | Area IDs where this resource can spawn |
-| `spawnRules.respawnPolicy` | string | no | How the resource respawns (e.g., `"daily"`, `"weekly"`) |
+| `spawnRules.anchors` | object | no | Per-area grid position as `"area_id": "x,y"` (auto-adds area to `areas`) |
+| `spawnRules.respawnPolicy` | string | no | How the resource respawns (`"daily"`, `"seasonal"`, `"none"`) |
 | `spawnRules.seasonal` | array | no | Seasons when this resource is available |
 | `spawnRules.dungeonVotes` | array | no | Vote entries for FoM dungeon floor spawn pools (see below) |
 | `interaction` | object | no | How the player interacts with this resource |
@@ -141,12 +147,14 @@ Each entry in `dungeonVotes` adds this resource to a FoM dungeon floor spawn poo
     "id": "mythril_ore",
     "kind": "breakable_node",
     "sprite": "sprites/mythril.png",
+    "objectName": "obj_ore_node",
     "yieldTable": [
-        { "item": "mythril_chunk", "min": 1, "max": 3 }
+        { "item": "mythril_chunk", "itemId": 312, "min": 1, "max": 3 }
     ],
     "spawnRules": {
         "areas": ["crystal_cave"],
-        "respawnPolicy": "weekly",
+        "anchors": { "crystal_cave": "5,12" },
+        "respawnPolicy": "daily",
         "seasonal": ["winter", "spring"],
         "dungeonVotes": [
             { "biome": "deep_earth", "pool": "ore_rock", "weight": 10 },
@@ -202,7 +210,7 @@ Characters that appear in EFL areas.
 |:------|:-----|:---------|:------------|
 | `id` | string | yes | Unique NPC identifier |
 | `displayName` | string | yes | Name shown in dialogue |
-| `kind` | string | yes | `"local"` or `"world"` (reserved, not yet implemented) |
+| `kind` | string | yes | `"local"` (area-bound) or `"world"` (global schedule — see World NPCs below) |
 | `defaultArea` | string | no | Area where this NPC spawns |
 | `spawnAnchor` | string | no | Position within the area |
 | `portraitPack` | string | no | Portrait set to use for dialogue |
@@ -224,7 +232,61 @@ Characters that appear in EFL areas.
 }
 ```
 
-Only `"local"` NPCs are supported in the current release. They exist only within EFL areas. World NPCs with global schedules, hearts, and gift systems are reserved for a future release.
+Local NPCs exist only within their assigned EFL area and are spawned/despawned when the player enters/leaves the room.
+
+---
+
+## World NPCs
+
+NPCs with global schedules, time-of-day movement, hearts, and gift systems.
+
+**File location**: `world_npcs/*.json`
+**Schema**: `schemas/world-npc.schema.json`
+
+| Field | Type | Required | Description |
+|:------|:-----|:---------|:------------|
+| `id` | string | yes | Unique world NPC identifier |
+| `displayName` | string | yes | Name shown in dialogue and the DevKit |
+| `objectName` | string | no | FoM GML object name for spawning (e.g. `"obj_npc_merchant"`) |
+| `portraitAsset` | string | no | Portrait asset reference |
+| `defaultAreaId` | string | no | Area where this NPC appears when no schedule entry matches |
+| `defaultAnchorId` | string | no | Anchor position in the default area (format: `"x,y"`) |
+| `unlockTrigger` | string | no | Trigger ID that controls NPC visibility |
+| `schedule` | array | no | Time-of-day location entries (see below) |
+| `heartsPerGift` | integer | no | Hearts gained per gift (default: 1) |
+| `giftableItems` | string[] | no | Item IDs this NPC accepts as gifts |
+
+### Schedule Entries
+
+Each schedule entry defines where the NPC should be during a time window. Time values are **seconds since midnight** (e.g. 21600 = 6:00 AM, 43200 = 12:00 PM, 64800 = 6:00 PM).
+
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `fromSeconds` | integer | Start of the time window (inclusive) |
+| `toSeconds` | integer | End of the time window (exclusive) |
+| `areaId` | string | EFL area where the NPC should be |
+| `anchorId` | string | Position within the area (format: `"x,y"`) |
+
+When EFL detects a schedule boundary crossing (via the per-frame time tick), it despawns the NPC from their old location and spawns them at the new one — if the player is in that room.
+
+```json
+{
+    "id": "forest_merchant",
+    "displayName": "Traveling Merchant",
+    "objectName": "obj_npc_merchant",
+    "defaultAreaId": "market_square",
+    "defaultAnchorId": "320,480",
+    "unlockTrigger": "met_merchant_trigger",
+    "schedule": [
+        { "fromSeconds": 21600, "toSeconds": 43200, "areaId": "market_square", "anchorId": "320,480" },
+        { "fromSeconds": 43200, "toSeconds": 64800, "areaId": "forest_clearing", "anchorId": "160,256" }
+    ],
+    "heartsPerGift": 2,
+    "giftableItems": ["rare_gem", "golden_apple"]
+}
+```
+
+World NPC hearts and gift state are persisted through the `SaveService` and keyed by the pack's `modId`.
 
 ---
 
@@ -343,28 +405,69 @@ See [Triggers and Conditions](triggers-and-conditions.md) for compound triggers 
 
 ## Events
 
-Story events and cutscene bridges.
+Cutscene eligibility declarations and EFL-side side effects.
 
 **File location**: `events/*.json`
 **Schema**: `schemas/event.schema.json`
 
+> **Design note**: Cutscene *content* (dialogue, scene steps, camera moves) is authored in MOMI's Mist format (`__mist__.json`) — not in EFL content packs. EFL owns two things only: (1) the eligibility gate (whether FoM should consider the cutscene playable today) and (2) the side effects applied when it fires (flag mutations, quest starts).
+
 | Field | Type | Required | Description |
 |:------|:-----|:---------|:------------|
-| `id` | string | yes | Unique event identifier |
-| `mode` | string | no | `"nativeBridge"` (uses FoM's StoryExecutor) or `"customOverlay"` |
-| `trigger` | string | no | Trigger ID that activates this event (empty = manual activation) |
-| `commands` | array | no | Sequence of commands to execute |
+| `id` | string | yes | Unique cutscene identifier. Must match the key in FoM's cutscene registry. |
+| `trigger` | string | no | EFL trigger ID. Must be true for the cutscene to be eligible. Empty = unconditional. |
+| `once` | boolean | no | If true (default), EFL blocks re-eligibility after first activation. |
+| `onFire.setFlags` | string[] | no | EFL flags to set when this cutscene fires. |
+| `onFire.clearFlags` | string[] | no | EFL flags to clear when this cutscene fires. |
+| `onFire.startQuest` | string | no | EFL quest ID to start when this cutscene fires. |
+| `onFire.advanceQuest` | string | no | EFL quest ID to advance when this cutscene fires. |
+| `onFire.grantItemId` | integer | no | Numeric FoM item index to grant when this cutscene fires. |
+| `onFire.grantItemQty` | integer | no | Quantity to grant (default: 1). |
 
 ```json
 {
-    "id": "hermit_intro_cutscene",
-    "mode": "nativeBridge",
-    "trigger": "first_cave_visit",
-    "commands": [
-        { "type": "dialogue", "npc": "cave_hermit", "line": "Welcome to my domain, young one." },
-        { "type": "setFlag", "flag": "met_hermit" }
-    ]
+    "id": "crystal_cave_reveal",
+    "trigger": "has_cave_key",
+    "once": true,
+    "onFire": {
+        "setFlags": ["cave_revealed"],
+        "startQuest": "find_crystals"
+    }
 }
 ```
 
-**V1 note**: The `"nativeBridge"` mode reuses the game's built-in StoryExecutor and cutscene system. EFL does not implement its own cutscene engine.
+EFL intercepts `gml_Script_check_cutscene_eligible@Mist@Mist` at runtime. If the key matches a registered cutscene and the trigger evaluates true, EFL returns `true` to FoM and applies `onFire` effects. FoM then plays the cutscene using its own Mist interpreter — no EFL command execution is involved.
+
+## Calendar Events
+
+Calendar / world-event registry — V3 pilot.
+
+**File location**: `calendar/*.json`
+**Schema**: `schemas/event-calendar.schema.json`
+**Required feature tag**: `calendar`
+
+Calendar events fire from EFL's `new_day` hook. Each tick, the engine reads the current season and day-of-season, finds any registered events that match, optionally evaluates a trigger condition, and (if it fires) dispatches a story event through `StoryBridge`. This is intentionally minimal for the V3 pilot — festival scripting, schedule edits, and shop gating come later.
+
+| Field | Type | Required | Description |
+|:------|:-----|:---------|:------------|
+| `id` | string | yes | Unique calendar event id within the pack. |
+| `displayName` | string | no | Human-readable name shown in DevKit and tooling. |
+| `season` | string \| int | no | One of `spring`, `summer`, `fall`, `winter`, `any` (or 0..=3 if you prefer the raw FoM encoding). Omitted = any. |
+| `dayOfSeason` | integer | no | 1..=28. Omitted = every day of the season. |
+| `condition` | string | no | Trigger id evaluated before activation. Empty = always satisfied. |
+| `onActivate` | string | no | Story event id to fire through `StoryBridge` when the event activates. |
+| `lifecycle` | string | no | `daily` (default — fires every matching day) or `once` (fires the first matching day, then stops). |
+
+```json
+{
+    "id": "summer_kickoff",
+    "displayName": "Summer Kickoff",
+    "season": "summer",
+    "dayOfSeason": 1,
+    "condition": "town_unlocked",
+    "onActivate": "story_summer_intro",
+    "lifecycle": "once"
+}
+```
+
+EFL keeps fired-once state in memory for the session; persistence across save/load is on the V3 follow-up list.

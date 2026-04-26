@@ -29,8 +29,9 @@ struct QuestStage {
 
 struct QuestReward {
     std::string type;   // "item"
-    std::string item;
-    int count = 1;
+    std::string item;   // human-readable name for reference
+    int itemId = 0;     // numeric ID from t2_input.json items list (0 = unset)
+    int count  = 1;
 };
 
 struct QuestDef {
@@ -56,6 +57,9 @@ public:
 
     std::vector<std::string> activeQuestIds() const;
     std::vector<std::string> completedQuestIds() const;
+
+    // Wired by bootstrap to call give_item@Ari@Ari via RoutineInvoker.
+    std::function<void(int itemId, int qty)> onItemGrant;
 
 private:
     std::vector<QuestDef> quests_;

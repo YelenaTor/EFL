@@ -1,0 +1,8 @@
+{
+    "id": "hello_adventurer_spring_kickoff",
+    "displayName": "Spring Kickoff Reminder",
+    "season": "spring",
+    "dayOfSeason": 1,
+    "lifecycle": "once",
+    "onActivate": "example_room_welcome"
+}

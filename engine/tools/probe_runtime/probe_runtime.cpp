@@ -1,20 +1,28 @@
-// EFL Runtime Probe v2 — YYC-compatible Aurie module
+// EFL Runtime Probe v14 — YYC-compatible Aurie module
 //
-// FoM uses the YoYo Compiler (YYC). Scripts are native C++ functions; YYTK's
-// EVENT_OBJECT_CALL (Code_Execute hook) never fires for them. This version
-// uses two strategies that DO work for YYC:
+// v13 results (2026-04-24):
+//   create_node_prototypes: one-shot fired 5s after startup — STARTUP call, not
+//   dungeon entry. All 1565 entries have destructable=false. Two explanations:
+//     (a) Startup call returns overworld objects only; dungeon entry call returns
+//         a different/augmented array that includes dungeon rocks.
+//     (b) All objects in the table have destructable=false; rocks use a different
+//         field (check_pick, category_id, etc.) to identify them.
+//   Strategy: skip cycle 1 (startup), dump on cycle 2 (dungeon entry). Also log
+//   array length on every call so we can see if the count changes.
 //
-//   Phase 1 — Discovery scan: iterate GetScriptData(0..N) and log every
-//             script whose name contains a probe keyword. This tells us
-//             the REAL FoM names regardless of what we guessed.
+// ── Probe targets ──────────────────────────────────────────────────────────
 //
-//   Phase 2 — Live hooks: for each candidate whose name resolves via
-//             GetNamedRoutinePointer, patch its native function pointer
-//             with MmCreateHook. When the script fires, we log its args.
+//   PROBE A — dungeon-entry call dump                   [OPEN — needs mine access]
+//     Skips cycle 1 (startup). On cycle 2 (dungeon entry):
+//       - Logs array length to detect if count differs from startup.
+//       - Scans for check_pick=true AND destructable=true entries (first 3 each).
+//     Always logs array length on every cycle for comparison.
 //
-// ── Actions to perform — all reachable from a fresh new game ──────────────
-//  Probe 1+2 (nodes/spawn): Start new game, enter Farm (day 1)
-//  Probe 3   (crafting):    Open any crafting station in town
+//   PROBE B — GridPrototypes candidate name scan         [runs at startup]
+//     Still 0/12 — kept for reference.
+//
+// ── In-game action checklist ──────────────────────────────────────────────
+//  [A]  Enter the mine / dungeon floor — cycle 2 fires the full dump
 // ──────────────────────────────────────────────────────────────────────────
 //
 // DO NOT load alongside EFL.dll — they compete on the same hooks.
@@ -22,7 +30,6 @@
 #include <Aurie/shared.hpp>
 #include <YYToolkit/YYTK_Shared.hpp>
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -37,17 +44,15 @@ namespace fs = std::filesystem;
 
 // ── Globals ────────────────────────────────────────────────────────────────
 
-static YYTK::YYTKInterface*  g_yytk  = nullptr;
-static Aurie::AurieModule*   g_mod   = nullptr;
-static std::ofstream         g_log;
-static std::mutex            g_logMux;
+static YYTK::YYTKInterface* g_yytk = nullptr;
+static Aurie::AurieModule*  g_mod  = nullptr;
+static std::ofstream        g_log;
+static std::mutex           g_logMux;
 
-// Keywords that identify probe-relevant scripts during the discovery scan
-static const std::vector<std::string> KEYWORDS = {
-    "node", "craft", "recipe", "spawn", "register", "anchor",
-    "prototype", "station", "forge", "biome", "vote", "resource",
-    "write", "place", "grid"
-};
+// PROBE A — fire once only
+static std::atomic<int>  g_probeACycles{0};
+static std::atomic<bool> g_selfDumped{false};
+static constexpr int MAX_A_CYCLES = 3;   // log cycle fires up to this many times
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -70,7 +75,6 @@ static void plog(const std::string& tag, const std::string& msg) {
     }
 }
 
-// PFUNC_YYGMLScript passes args as RValue*[] (array of pointers), not RValue[].
 static std::string rvalStr(const YYTK::RValue& rv) {
     switch (rv.m_Kind) {
         case YYTK::VALUE_REAL:      return std::to_string(rv.m_Real);
@@ -84,70 +88,285 @@ static std::string rvalStr(const YYTK::RValue& rv) {
     }
 }
 
-static void plogArgs(const std::string& tag, const std::string& name,
-                     int argc, YYTK::RValue* args[]) {
-    std::ostringstream ss;
-    ss << name << '(';
-    for (int i = 0; i < argc && i < 10; ++i) {
-        if (i) ss << ", ";
-        ss << '[' << i << "]=";
-        if (args[i]) ss << rvalStr(*args[i]);
-        else         ss << "<null>";
+static void dumpStructFields(const std::string& tag, const std::string& label,
+                             YYTK::CInstance* self, const YYTK::RValue& rv) {
+    {
+        std::ostringstream ss;
+        ss << label << ": kind=" << rv.GetKindName()
+           << " ptr=0x" << std::hex
+           << reinterpret_cast<uintptr_t>(rv.m_Object);
+        plog(tag, ss.str());
     }
-    if (argc > 10) ss << " ...+" << (argc - 10) << " more";
-    ss << ')';
-    plog(tag, ss.str());
+
+    // Guard: variable_struct_get_names only works on VALUE_OBJECT (struct/instance).
+    // Calling it on an array or other type routes to variable_instance_get_names
+    // internally, which expects a numeric ID and crashes if it gets an array.
+    if (rv.m_Kind != YYTK::VALUE_OBJECT) {
+        plog(tag, label + ": kind=" + std::string(rv.GetKindName()) +
+             " — not a struct/object, skipping field dump");
+        return;
+    }
+
+    if (!rv.m_Object) {
+        plog(tag, label + ": null object pointer — cannot dump fields");
+        return;
+    }
+
+    YYTK::RValue namesArr;
+    auto s1 = g_yytk->CallBuiltinEx(
+        namesArr, "variable_struct_get_names", self, nullptr, {rv});
+
+    if (!Aurie::AurieSuccess(s1)) {
+        plog(tag, label + ": variable_struct_get_names failed (status=" +
+             std::to_string(static_cast<int>(s1)) + ")");
+        plog(tag, label + ": use Cheat Engine / x64dbg to inspect struct ptr above");
+        return;
+    }
+
+    YYTK::RValue lenRv;
+    auto s2 = g_yytk->CallBuiltinEx(lenRv, "array_length", self, nullptr, {namesArr});
+
+    int fieldCount = 0;
+    if (Aurie::AurieSuccess(s2)) {
+        if (lenRv.m_Kind == YYTK::VALUE_REAL)  fieldCount = static_cast<int>(lenRv.m_Real);
+        if (lenRv.m_Kind == YYTK::VALUE_INT32) fieldCount = lenRv.m_i32;
+    }
+
+    plog(tag, label + ": field count = " + std::to_string(fieldCount));
+
+    if (fieldCount <= 0 || fieldCount > 256) {
+        plog(tag, label + ": field count out of expected range");
+        return;
+    }
+
+    for (int i = 0; i < fieldCount && i < 64; ++i) {
+        YYTK::RValue idxRv;
+        idxRv.m_Kind = YYTK::VALUE_REAL;
+        idxRv.m_Real = static_cast<double>(i);
+
+        YYTK::RValue fieldNameRv;
+        auto s3 = g_yytk->CallBuiltinEx(
+            fieldNameRv, "array_get", self, nullptr, {namesArr, idxRv});
+        if (!Aurie::AurieSuccess(s3)) continue;
+
+        YYTK::RValue fieldVal;
+        auto s4 = g_yytk->CallBuiltinEx(
+            fieldVal, "variable_struct_get", self, nullptr, {rv, fieldNameRv});
+
+        std::ostringstream ss;
+        ss << "  ." << fieldNameRv.ToString()
+           << " = " << (Aurie::AurieSuccess(s4) ? rvalStr(fieldVal) : "<get_failed>");
+        plog(tag, ss.str());
+    }
+
+    if (fieldCount > 64)
+        plog(tag, label + ": ... truncated at 64 fields");
 }
 
-// ── YYC script hook trampolines ────────────────────────────────────────────
+// ── Prototype field scanner ───────────────────────────────────────────────
 //
-// Each script hook has:
-//   - A trampoline pointer (filled by MmCreateHook, used to call original)
-//   - A static hook function with PFUNC_YYGMLScript signature
+// Generic helper: scans the prototype array for entries where a named boolean
+// field is true, dumping the first maxHits matches in full.
+// fieldName must be a valid field present in every element (no guard needed —
+// variable_struct_get returns undefined for missing fields, not a crash).
+//
+// The string RValue for fieldName is obtained by walking the names array of
+// elem[0] so we never have to construct a GML string in C++.
 
-// PFUNC_YYGMLScript = RValue& (*)(CInstance*, CInstance*, RValue&, int, RValue*[])
+static void scanForBoolField(const std::string& tag, YYTK::CInstance* ctx,
+                             const YYTK::RValue& arr,
+                             const std::string& fieldName, int maxHits = 3) {
+    YYTK::RValue lenRv;
+    if (!Aurie::AurieSuccess(g_yytk->CallBuiltinEx(lenRv, "array_length", ctx, nullptr, {arr}))) {
+        plog(tag, fieldName + " scan: array_length failed"); return;
+    }
+    int len = 0;
+    if (lenRv.m_Kind == YYTK::VALUE_REAL)  len = static_cast<int>(lenRv.m_Real);
+    if (lenRv.m_Kind == YYTK::VALUE_INT32) len = lenRv.m_i32;
 
-#define DEFINE_HOOK(NICK, LABEL, EXTRA)                                       \
-    static YYTK::PFUNC_YYGMLScript g_orig_##NICK = nullptr;                  \
-    static YYTK::RValue& Hook_##NICK(                                         \
-            YYTK::CInstance* s, YYTK::CInstance* o,                           \
-            YYTK::RValue& r, int argc, YYTK::RValue* args[]) {                \
-        plog(LABEL, "FIRED: " #NICK);                                         \
-        plogArgs(LABEL, #NICK, argc, args);                                   \
-        EXTRA                                                                  \
-        return g_orig_##NICK(s, o, r, argc, args);                            \
+    YYTK::RValue idx0; idx0.m_Kind = YYTK::VALUE_REAL; idx0.m_Real = 0.0;
+    YYTK::RValue elem0;
+    if (!Aurie::AurieSuccess(g_yytk->CallBuiltinEx(elem0, "array_get", ctx, nullptr, {arr, idx0}))) {
+        plog(tag, fieldName + " scan: array_get[0] failed"); return;
+    }
+    YYTK::RValue names0;
+    if (!Aurie::AurieSuccess(g_yytk->CallBuiltinEx(names0, "variable_struct_get_names", ctx, nullptr, {elem0}))) {
+        plog(tag, fieldName + " scan: variable_struct_get_names failed"); return;
+    }
+    YYTK::RValue nLenRv;
+    g_yytk->CallBuiltinEx(nLenRv, "array_length", ctx, nullptr, {names0});
+    int nfields = 0;
+    if (nLenRv.m_Kind == YYTK::VALUE_REAL)  nfields = static_cast<int>(nLenRv.m_Real);
+    if (nLenRv.m_Kind == YYTK::VALUE_INT32) nfields = nLenRv.m_i32;
+
+    int fieldIdx = -1;
+    YYTK::RValue cachedNameRv;
+    for (int i = 0; i < nfields; ++i) {
+        YYTK::RValue iRv; iRv.m_Kind = YYTK::VALUE_REAL; iRv.m_Real = static_cast<double>(i);
+        YYTK::RValue nameRv;
+        g_yytk->CallBuiltinEx(nameRv, "array_get", ctx, nullptr, {names0, iRv});
+        if (nameRv.m_Kind == YYTK::VALUE_STRING && nameRv.ToString() == fieldName) {
+            fieldIdx     = i;
+            cachedNameRv = nameRv;
+            break;
+        }
+    }
+    if (fieldIdx < 0) {
+        plog(tag, "'" + fieldName + "' not found in prototype fields — skipping");
+        return;
+    }
+    plog(tag, "scanning for " + fieldName + "=true across " + std::to_string(len) + " prototypes...");
+
+    int hits = 0;
+    for (int i = 0; i < len && hits < maxHits; ++i) {
+        YYTK::RValue iRv; iRv.m_Kind = YYTK::VALUE_REAL; iRv.m_Real = static_cast<double>(i);
+        YYTK::RValue elem;
+        if (!Aurie::AurieSuccess(g_yytk->CallBuiltinEx(elem, "array_get", ctx, nullptr, {arr, iRv})))
+            continue;
+        if (elem.m_Kind != YYTK::VALUE_OBJECT) continue;
+
+        YYTK::RValue fval;
+        if (!Aurie::AurieSuccess(g_yytk->CallBuiltinEx(fval, "variable_struct_get", ctx, nullptr, {elem, cachedNameRv})))
+            continue;
+
+        bool isTrue = false;
+        if (fval.m_Kind == YYTK::VALUE_BOOL || fval.m_Kind == YYTK::VALUE_INT32)
+            isTrue = (fval.m_i32 != 0);
+        else if (fval.m_Kind == YYTK::VALUE_REAL)
+            isTrue = (fval.m_Real != 0.0);
+
+        if (!isTrue) continue;
+
+        plog(tag, fieldName + "=true at prototype[" + std::to_string(i) + "]");
+        dumpStructFields(tag, "prototype[" + std::to_string(i) + "]", ctx, elem);
+        ++hits;
     }
 
-DEFINE_HOOK(create_node_prototypes, "PROBE1",
-    plog("PROBE1", ">>> This IS the node-prototype script. Check discovery log for");
-    plog("PROBE1", "    any *register*/*vote*/*anchor* script that fires AFTER this.");
-)
+    if (hits == 0)
+        plog(tag, "no " + fieldName + "=true entries found in " + std::to_string(len) + " prototypes");
+    else
+        plog(tag, fieldName + " scan done — found " + std::to_string(hits) + " entries");
+}
 
-DEFINE_HOOK(register_node, "PROBE1",
-    plog("PROBE1", "CONFIRMED vote-table mutation API — use this for RESOURCE-H002");
-)
+// Logs the array length and runs both destructable and check_pick scans.
+static void runDungeonEntryDump(const std::string& tag, YYTK::CInstance* ctx,
+                                const YYTK::RValue& arr) {
+    YYTK::RValue lenRv;
+    if (!Aurie::AurieSuccess(g_yytk->CallBuiltinEx(lenRv, "array_length", ctx, nullptr, {arr}))) {
+        plog(tag, "array_length failed"); return;
+    }
+    int len = 0;
+    if (lenRv.m_Kind == YYTK::VALUE_REAL)  len = static_cast<int>(lenRv.m_Real);
+    if (lenRv.m_Kind == YYTK::VALUE_INT32) len = lenRv.m_i32;
+    plog(tag, "array length on this call = " + std::to_string(len));
 
-DEFINE_HOOK(write_node, "PROBE2", )
+    scanForBoolField(tag, ctx, arr, "destructable");
+    scanForBoolField(tag, ctx, arr, "check_pick");
+}
 
-DEFINE_HOOK(attempt_to_write_object_node, "PROBE2",
-    plog("PROBE2", "CONFIRMED surface spawn API — use in HijackedRoomBackend");
-)
+// ── Helpers — instance-as-struct RValue ───────────────────────────────────
 
-DEFINE_HOOK(spawn_crafting_menu, "PROBE3",
-    plog("PROBE3", "CONFIRMED: spawn_crafting_menu — use for CRAFT-H001");
-)
+static YYTK::RValue instanceRv(YYTK::CInstance* inst) {
+    YYTK::RValue rv;
+    rv.m_Kind   = YYTK::VALUE_OBJECT;
+    rv.m_Object = reinterpret_cast<YYTK::YYObjectBase*>(inst);
+    return rv;
+}
 
-DEFINE_HOOK(open_crafting_station, "PROBE3",
-    plog("PROBE3", "CONFIRMED: open_crafting_station — use for CRAFT-H001");
-)
+// ── PROBE A — self + other dump, global keyword scan ─────────────────────
+//
+// v9 result: self post-call = {from_game: false} — a 1-field config struct,
+// NOT the GridPrototypes table. Dumping `o` (other) and enumerating globals
+// with keyword filtering to locate the real table.
+//
+// Global scan runs inside the hook (not at init) so we have a valid
+// CInstance* context for CallBuiltinEx. Keyword-filtered to avoid log flood.
+//
+// g_selfDumped gates the entire block to exactly one execution.
 
-DEFINE_HOOK(initialize_crafting, "PROBE3",
-    plog("PROBE3", "CONFIRMED: initialize_crafting — use for CRAFT-H001");
-)
+static YYTK::PFUNC_YYGMLScript g_orig_create_node_prototypes = nullptr;
+static YYTK::RValue& Hook_create_node_prototypes(
+        YYTK::CInstance* s, YYTK::CInstance* o,
+        YYTK::RValue& r, int argc, YYTK::RValue* args[]) {
 
-DEFINE_HOOK(start_crafting_session, "PROBE3",
-    plog("PROBE3", "CONFIRMED: start_crafting_session — use for CRAFT-H001");
-)
+    int cycle = g_probeACycles.fetch_add(1) + 1;
+    if (cycle <= MAX_A_CYCLES)
+        plog("PROBEA", "create_node_prototypes FIRED (cycle " +
+             std::to_string(cycle) + "/" + std::to_string(MAX_A_CYCLES) + ")");
+    else if (cycle == MAX_A_CYCLES + 1)
+        plog("PROBEA", "create_node_prototypes: cycle cap — further fires silent");
+
+    // Let FoM build the table.
+    auto& ret = g_orig_create_node_prototypes(s, o, r, argc, args);
+
+    // Snapshot r before any GML builtins — r is a reference into the VM return
+    // slot and will be overwritten by CallBuiltinEx (confirmed crash v11).
+    YYTK::RValue retvalSnapshot = r;
+
+    // Log array length every cycle so we can compare startup vs dungeon entry.
+    if (cycle <= MAX_A_CYCLES && retvalSnapshot.m_Kind == YYTK::VALUE_ARRAY) {
+        YYTK::RValue lenRv;
+        if (Aurie::AurieSuccess(g_yytk->CallBuiltinEx(lenRv, "array_length", s, nullptr, {retvalSnapshot}))) {
+            int len = 0;
+            if (lenRv.m_Kind == YYTK::VALUE_REAL)  len = static_cast<int>(lenRv.m_Real);
+            if (lenRv.m_Kind == YYTK::VALUE_INT32) len = lenRv.m_i32;
+            plog("PROBEA", "cycle " + std::to_string(cycle) + ": array length = " + std::to_string(len));
+        }
+    }
+
+    // Full dump fires exactly once, on cycle 2.
+    // Cycle 1 = startup call (all overworld objects, all destructable=false).
+    // Cycle 2 = first dungeon entry call — the one we want.
+    if (cycle == 2 && !g_selfDumped.exchange(true)) {
+        plog("PROBEA", "--- dungeon entry dump BEGIN ---");
+        if (retvalSnapshot.m_Kind == YYTK::VALUE_ARRAY)
+            runDungeonEntryDump("PROBEA", s, retvalSnapshot);
+        else
+            plog("PROBEA", "retval kind=" + std::string(retvalSnapshot.GetKindName()) + " — not an array");
+        plog("PROBEA", "--- dungeon entry dump END ---");
+        plog("PROBEA", "one-shot complete — hook passes through silently from here");
+    }
+
+    return ret;
+}
+
+// ── PROBE B — GridPrototypes candidate name scan ──────────────────────────
+//
+// Tries a fixed set of plausible registration method names at startup.
+// Logs FOUND/NOT FOUND for each so we can identify the public API for
+// vote registration without a full script enumeration loop.
+
+static void runCandidateScan() {
+    static const std::vector<std::string> candidates = {
+        "gml_Script_register_node@GridPrototypes@GridPrototypes",
+        "gml_Script_add_node@GridPrototypes@GridPrototypes",
+        "gml_Script_add_vote@GridPrototypes@GridPrototypes",
+        "gml_Script_vote@GridPrototypes@GridPrototypes",
+        "gml_Script_build@GridPrototypes@GridPrototypes",
+        "gml_Script_initialize@GridPrototypes@GridPrototypes",
+        "gml_Script_add@GridPrototypes@GridPrototypes",
+        "gml_Script_set_node@GridPrototypes@GridPrototypes",
+        "gml_Script_add_prototype@GridPrototypes@GridPrototypes",
+        "gml_Script_register_node@Grid@Grid",
+        "gml_Script_add_node@Grid@Grid",
+        "gml_Script_node_vote@Grid@Grid",
+    };
+
+    plog("PROBEB", "=== GridPrototypes candidate name scan ===");
+    int found = 0;
+    for (const auto& name : candidates) {
+        PVOID raw = nullptr;
+        auto s = g_yytk->GetNamedRoutinePointer(name.c_str(), &raw);
+        if (Aurie::AurieSuccess(s) && raw) {
+            plog("PROBEB", "FOUND:     " + name);
+            ++found;
+        } else {
+            plog("PROBEB", "not found: " + name);
+        }
+    }
+    plog("PROBEB", "scan complete — " + std::to_string(found) + "/" +
+         std::to_string(candidates.size()) + " candidates found");
+}
 
 // ── Hook installation ──────────────────────────────────────────────────────
 
@@ -186,59 +405,12 @@ static void installHook(const HookDef& hd) {
     }
 
     *hd.trampolineDst = reinterpret_cast<YYTK::PFUNC_YYGMLScript>(trampRaw);
-    plog("HOOK", std::string("HOOKED: ") + hd.scriptName);
-}
 
-// ── Phase 1 — Discovery scan ───────────────────────────────────────────────
-//
-// Iterates GetScriptData(0..N) and logs every script name matching a keyword.
-// This runs at ModuleInitialize time (before the game creates any objects),
-// so it's safe to call from the main thread during late-init.
-// Result: a dictionary of all FoM scripts with probe-relevant names.
-
-static void runDiscoveryScan() {
-    plog("DISCOVER", "=== Scanning FoM script table for probe keywords ===");
-    int found = 0;
-    int consecMiss = 0;
-
-    for (int i = 0; i < 20000 && consecMiss < 500; ++i) {
-        YYTK::CScript* cs = nullptr;
-        auto s = g_yytk->GetScriptData(i, cs);
-
-        if (!Aurie::AurieSuccess(s)) {
-            ++consecMiss;
-            continue;
-        }
-        consecMiss = 0;
-        if (!cs) continue;
-
-        // Prefer CCode name (bytecode path, may be null in YYC), fall back to
-        // YYGMLFuncs name.
-        const char* name = nullptr;
-        if (cs->m_Code)      name = cs->m_Code->GetName();
-        if (!name && cs->m_Functions) name = cs->m_Functions->m_Name;
-        if (!name) continue;
-
-        std::string sname(name);
-        if (sname.rfind("gml_Script_", 0) != 0) continue; // only user scripts
-
-        std::string lower = sname;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-        for (const auto& kw : KEYWORDS) {
-            if (lower.find(kw) != std::string::npos) {
-                plog("DISCOVER", "[" + std::to_string(i) + "] " + sname);
-                ++found;
-                break;
-            }
-        }
-    }
-
-    plog("DISCOVER", "Scan complete. Keyword-matching scripts found: " + std::to_string(found));
-    if (found == 0) {
-        plog("DISCOVER", "WARNING: zero matches — m_Code may be null in YYC mode.");
-        plog("DISCOVER", "Check HOOK lines below; if GetNamedRoutinePointer hits, hooks work.");
-    }
+    std::ostringstream addrSs;
+    addrSs << "HOOKED: " << hd.scriptName
+           << "  fn=0x" << std::hex
+           << reinterpret_cast<uintptr_t>(cs->m_Functions->m_ScriptFunction);
+    plog("HOOK", addrSs.str());
 }
 
 // ── Module entry / unload ──────────────────────────────────────────────────
@@ -249,7 +421,7 @@ EXPORTED Aurie::AurieStatus ModuleInitialize(
 ) {
     g_mod = Module;
 
-    auto logDir = ModulePath.parent_path().parent_path() / "EFL";
+    auto logDir  = ModulePath.parent_path().parent_path() / "EFL";
     fs::create_directories(logDir);
     auto logPath = logDir / "probe_output.txt";
     g_log.open(logPath, std::ios::out | std::ios::trunc);
@@ -261,47 +433,28 @@ EXPORTED Aurie::AurieStatus ModuleInitialize(
     if (!Aurie::AurieSuccess(status) || !g_yytk)
         return Aurie::AURIE_MODULE_DEPENDENCY_NOT_RESOLVED;
 
-    plog("INIT", "=== EFL Runtime Probe v2 (YYC-compatible) ===");
+    plog("INIT", "=== EFL Runtime Probe v14 ===");
     plog("INIT", "Output: " + logPath.string());
+    plog("INIT", "");
+    plog("INIT", "Active probes:");
+    plog("INIT", "  [A] dungeon-entry dump (cycle 2) — enter mine to trigger");
+    plog("INIT", "  [B] Candidate name scan     — runs now at startup");
+    plog("INIT", "");
 
-    // Phase 1: enumerate script table → log matching names
-    runDiscoveryScan();
+    runCandidateScan();
 
-    // Phase 2: hook each candidate by exact name
-    plog("HOOK", "=== Hook registration (exact name lookup) ===");
+    plog("INIT", "");
+    plog("HOOK", "=== Hook registration ===");
 
     const std::vector<HookDef> hooks = {
-        // Probe 1 — node prototype creation + vote-table mutation
         {"gml_Script_create_node_prototypes",
             Hook_create_node_prototypes, &g_orig_create_node_prototypes},
-        {"gml_Script_register_node@Anchor@Anchor",
-            Hook_register_node, &g_orig_register_node},
-
-        // Probe 2 — surface node spawn
-        {"gml_Script_write_node@Grid@Grid",
-            Hook_write_node, &g_orig_write_node},
-        {"gml_Script_attempt_to_write_object_node",
-            Hook_attempt_to_write_object_node, &g_orig_attempt_to_write_object_node},
-
-        // Probe 3 — crafting station open (4 candidates)
-        {"gml_Script_spawn_crafting_menu",
-            Hook_spawn_crafting_menu, &g_orig_spawn_crafting_menu},
-        {"gml_Script_open_crafting_station",
-            Hook_open_crafting_station, &g_orig_open_crafting_station},
-        {"gml_Script_initialize_crafting@CraftingStation@CraftingStation",
-            Hook_initialize_crafting, &g_orig_initialize_crafting},
-        {"gml_Script_start_crafting_session",
-            Hook_start_crafting_session, &g_orig_start_crafting_session},
     };
 
-    int hookedCount = 0;
     for (const auto& h : hooks) installHook(h);
 
     plog("INIT", "");
-    plog("INIT", "Probe ready. Perform in-game actions:");
-    plog("INIT", "  [1+2] Start new game → enter Farm (day 1)");
-    plog("INIT", "  [3]   Open a crafting station in town");
-    plog("INIT", "Then quit and check this log.");
+    plog("INIT", "Ready. Enter the mine/dungeon to trigger Probe A (fires once, then silent).");
     plog("INIT", "");
 
     return Aurie::AURIE_SUCCESS;
@@ -311,8 +464,7 @@ EXPORTED Aurie::AurieStatus ModuleUnload(
     IN Aurie::AurieModule* Module,
     IN const Aurie::fs::path& ModulePath
 ) {
-    // MmCreateHook detours are automatically removed by Aurie when the module unloads.
-    plog("INIT", "=== EFL Runtime Probe unloaded ===");
+    plog("INIT", "=== EFL Runtime Probe v14 unloaded ===");
     if (g_log.is_open()) g_log.close();
     return Aurie::AURIE_SUCCESS;
 }

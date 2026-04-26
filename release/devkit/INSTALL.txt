@@ -3,7 +3,7 @@
 ==========================================================
 
 This is the EFL developer kit. It includes the EFL engine DLL and the
-diagnostic TUI (Terminal User Interface) for mod development.
+desktop DevKit application for mod development.
 
 REQUIREMENTS
   - Fields of Mistria (Steam)
@@ -27,11 +27,20 @@ FIRST-RUN NOTE
     <game folder>\aurie.log
   You should see a line containing: MdMapImage(EFL.dll) returns AURIE_SUCCESS
 
-INSTALLING THE TUI
-  1. Place efl-tui.exe in the same folder as EFL.dll:
-       <game folder>\mods\aurie\
-     Or anywhere on your PATH.
-  2. See TUI_USAGE.txt for detailed usage instructions.
+LAUNCHING THE DEVKIT
+  1. Open the EFL DevKit folder from the release zip.
+  2. Launch efl-devkit.exe.
+  3. See USAGE.txt for detailed usage instructions.
+
+CLI ALTERNATIVE (efl-pack.exe)
+  efl-pack.exe lives next to efl-devkit.exe and runs the same compile and
+  validate pipeline from the command line. Use it for build scripts and
+  one-off smoke runs:
+
+    efl-pack.exe my_pack --output build\
+    efl-pack.exe my_pack --validate-only
+
+  Run "efl-pack.exe --help" for the full reference.
 
 CONTENT PACK DEVELOPMENT
   See GETTING_STARTED.txt for how to create your first content pack.

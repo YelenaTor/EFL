@@ -16,6 +16,7 @@ std::optional<DialogueDef> DialogueDef::fromJson(const nlohmann::json& j) {
             DialogueEntry entry;
             if (e.contains("id"))        entry.id        = e.at("id").get<std::string>();
             if (e.contains("text"))      entry.text      = e.at("text").get<std::string>();
+            if (e.contains("locKey"))    entry.locKey    = e.at("locKey").get<std::string>();
             if (e.contains("portrait"))  entry.portrait  = e.at("portrait").get<std::string>();
             if (e.contains("condition")) entry.condition = e.at("condition").get<std::string>();
             def.entries.push_back(std::move(entry));

@@ -24,6 +24,7 @@ std::optional<ResourceDef> ResourceDef::fromJson(const nlohmann::json& j) {
         for (const auto& entry : j.at("yieldTable")) {
             YieldEntry ye;
             ye.item = entry.at("item").get<std::string>();
+            if (entry.contains("itemId")) ye.itemId = entry.at("itemId").get<int>();
             if (entry.contains("min")) ye.min = entry.at("min").get<int>();
             if (entry.contains("max")) ye.max = entry.at("max").get<int>();
             def.yieldTable.push_back(ye);
@@ -55,9 +56,10 @@ std::optional<ResourceDef> ResourceDef::fromJson(const nlohmann::json& j) {
         if (sr.contains("dungeonVotes")) {
             for (const auto& entry : sr.at("dungeonVotes")) {
                 DungeonVoteEntry dv;
-                dv.biome  = entry.at("biome").get<std::string>();
-                dv.pool   = entry.value("pool", std::string("ore_rock"));
-                dv.weight = entry.value("weight", 1);
+                dv.biome    = entry.at("biome").get<std::string>();
+                dv.pool     = entry.value("pool", std::string("ore_rock"));
+                dv.objectId = entry.value("objectId", std::string());
+                dv.weight   = entry.value("weight", 1);
                 def.spawnRules.dungeonVotes.push_back(dv);
             }
         }

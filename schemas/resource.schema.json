@@ -14,9 +14,10 @@
       "items": {
         "type": "object",
         "properties": {
-          "item": { "type": "string" },
-          "min": { "type": "integer" },
-          "max": { "type": "integer" }
+          "item": { "type": "string", "description": "Human-readable item name (used in logs and IPC events)." },
+          "itemId": { "type": "integer", "description": "Numeric FoM item index. Required for actual item granting via give_item. See FoM-Datamined-Insanity item IDs." },
+          "min": { "type": "integer", "default": 1 },
+          "max": { "type": "integer", "default": 1 }
         }
       }
     },

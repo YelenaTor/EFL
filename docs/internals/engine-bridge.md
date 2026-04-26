@@ -79,10 +79,11 @@ This backend will create entirely new rooms in the GameMaker runtime, removing t
 
 ## StoryBridge
 
-Reuses the game's built-in `StoryExecutor` and cutscene system rather than implementing a second cutscene engine. EFL events with `"mode": "nativeBridge"` are translated into StoryExecutor commands.
+EFL does not implement a cutscene engine. Cutscene content (dialogue, scene steps, camera moves, character movement) is authored in MOMI's Mist format and executed by FoM's native Mist interpreter — EFL never touches it.
 
-This provides:
+EFL's role is limited to two hooks:
 
-- Native-quality cutscene playback
-- Compatibility with the game's existing cutscene format
-- Camera control, character movement, and dialogue through the game's own systems
+- **`gml_Script_load_cutscenes` (observe)** — fires at boot; EFL logs all registered cutscene keys to the DevKit diagnostics pipe.
+- **`gml_Script_check_cutscene_eligible@Mist@Mist` (intercept)** — fires each day per cutscene key. EFL intercepts the return value: if the key matches a registered `CutsceneDef` and its trigger evaluates true, EFL returns `true` to FoM and applies `onFire` side effects (flag mutations, quest starts). If the key is not EFL's, EFL lets the call fall through to FoM's own eligibility logic.
+
+This is an intercept hook — EFL uses `MmCreateHook` to shim the function, and the callback can set the `RValue&` return value and short-circuit the original. The 8-slot `g_interceptSlots` shim table in `hooks.cpp` is the mechanism (same YYC pattern as script hooks, but with a boolean return to control fallthrough).

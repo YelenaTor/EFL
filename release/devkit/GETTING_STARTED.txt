@@ -57,4 +57,4 @@ NEXT STEPS
   2. Copy the example mod folder into mods\efl\ and rename it
   3. Change the modId and name in manifest.efl
   4. Edit the content JSON files to define your own areas, NPCs, etc.
-  5. Launch the game with the TUI running to see diagnostics in real time
+  5. Launch the game with EFL DevKit open to see diagnostics in real time

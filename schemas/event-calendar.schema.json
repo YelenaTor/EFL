@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://efl.dev/schemas/event-calendar.schema.json",
+  "title": "EFL Calendar Event",
+  "description": "Schema for files under a pack's calendar/ folder. One JSON file per calendar/world event. Requires the 'calendar' feature in the .efl manifest.",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this calendar event within the pack. Used as the registry key and for once-only fire tracking.",
+      "minLength": 1
+    },
+
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable name shown in tooling. Optional."
+    },
+
+    "season": {
+      "description": "Which FoM season this event activates in. 'any' (or omitted) lets it fire in every season.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["spring", "summer", "fall", "winter", "any"]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Raw FoM season encoding (0=spring, 1=summer, 2=fall, 3=winter). Prefer the string form."
+        }
+      ]
+    },
+
+    "dayOfSeason": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 28,
+      "description": "Day-of-season the event activates on. Omit to match every day."
+    },
+
+    "condition": {
+      "type": "string",
+      "description": "Optional trigger id evaluated by TriggerService before activating. Empty/omitted means 'always satisfied'."
+    },
+
+    "onActivate": {
+      "type": "string",
+      "description": "Optional story event id to fire through StoryBridge when the event activates."
+    },
+
+    "lifecycle": {
+      "type": "string",
+      "enum": ["daily", "once"],
+      "default": "daily",
+      "description": "How often the event re-activates. 'daily' fires every matching day. 'once' fires the first matching day and never again."
+    },
+
+    "once": {
+      "type": "boolean",
+      "description": "Legacy alias for lifecycle: 'once'. If both are present, 'lifecycle' wins."
+    }
+
+  },
+  "additionalProperties": false
+}

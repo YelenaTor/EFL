@@ -1,0 +1,95 @@
+name: Smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Engine + DevKit + Pack Pipeline
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            devkit/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('devkit/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build DevKit + efl-pack (debug)
+        working-directory: devkit
+        run: cargo build --bins
+
+      - name: DevKit unit tests
+        working-directory: devkit
+        run: cargo test --lib
+
+      - name: Configure CMake
+        working-directory: engine
+        run: cmake -B build
+
+      - name: Build engine DLL
+        working-directory: engine
+        run: cmake --build build --config Debug
+
+      - name: Engine unit tests (ctest)
+        working-directory: engine/build
+        run: ctest -C Debug --output-on-failure
+
+      - name: Pack example .efpack via CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT_DIR="${RUNNER_TEMP}/efl-smoke-out"
+          mkdir -p "${OUT_DIR}"
+          ./devkit/target/debug/efl-pack.exe examples/hello_adventurer \
+            --profile recommended \
+            --output "${OUT_DIR}"
+          # Verify the artifact exists and is non-empty.
+          ART=$(find "${OUT_DIR}" -name "*.efpack" -type f -size +0 | head -n 1)
+          if [ -z "${ART}" ]; then
+            echo "smoke: no .efpack artifact produced" >&2
+            exit 1
+          fi
+          echo "smoke artifact: ${ART}"
+          # Sanity-check build-meta sidecar.
+          test -f "$(dirname "${ART}")/build-meta.json"
+          echo "build-meta sidecar OK"
+
+      - name: Validate example pack via CLI (validate-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `recommended` is the documented default; `strict` is opt-in for
+          # authors who want unresolved base-game references to be hard errors.
+          # The example warp legitimately targets the base-game area "town",
+          # so we validate at the recommended profile here.
+          ./devkit/target/debug/efl-pack.exe examples/hello_adventurer \
+            --validate-only \
+            --profile recommended
+
+      - name: Pack example .efdat via CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT_DIR="${RUNNER_TEMP}/efl-smoke-out"
+          ./devkit/target/debug/efl-pack.exe examples/hello_compat \
+            --profile recommended \
+            --output "${OUT_DIR}"
+          ART=$(find "${OUT_DIR}" -name "*.efdat" -type f -size +0 | head -n 1)
+          if [ -z "${ART}" ]; then
+            echo "smoke: no .efdat artifact produced" >&2
+            exit 1
+          fi
+          echo "smoke .efdat artifact: ${ART}"

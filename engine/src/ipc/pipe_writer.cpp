@@ -44,12 +44,44 @@ bool PipeWriter::create() {
 #endif
 }
 
+bool PipeWriter::tryReconnect() {
+#ifdef _WIN32
+    // Rate-limit: only attempt reconnect once per second.
+    auto now = std::chrono::steady_clock::now();
+    if (now - lastReconnectAttempt_ < std::chrono::seconds(1))
+        return false;
+    lastReconnectAttempt_ = now;
+
+    // Reset the server side so it can accept a new client.
+    DisconnectNamedPipe(pipeHandle_);
+    BOOL ok = ConnectNamedPipe(pipeHandle_, nullptr);
+    DWORD err = GetLastError();
+
+    if (ok || err == ERROR_PIPE_CONNECTED) {
+        connected_ = true;
+        disconnectedLogged_ = false;
+        return true;
+    }
+#endif
+    return false;
+}
+
 void PipeWriter::write(const std::string& msgType, const nlohmann::json& payload) {
 #ifdef _WIN32
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!connected_ || pipeHandle_ == nullptr)
+    if (pipeHandle_ == nullptr)
         return;
+
+    if (!connected_) {
+        if (!disconnectedLogged_) {
+            // One-time log — subsequent drops are silent until reconnect.
+            // (LogService not available here; the disconnect already logged in write() below.)
+            disconnectedLogged_ = true;
+        }
+        if (!tryReconnect())
+            return;
+    }
 
     // Build timestamp
     auto now = std::chrono::system_clock::now();
@@ -78,8 +110,9 @@ void PipeWriter::write(const std::string& msgType, const nlohmann::json& payload
                         &bytesWritten, nullptr);
 
     if (!ok) {
-        // Broken pipe or other write failure — silently stop
+        // Write failed — client likely disconnected. Mark for reconnect attempt next write.
         connected_ = false;
+        disconnectedLogged_ = false; // allow one-time log to fire again on next drop
     }
 #endif
 }

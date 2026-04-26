@@ -55,6 +55,13 @@ using CodeEventCallback = std::function<void(
 // Callback for frame events (called each Present).
 using FrameCallback = std::function<void()>;
 
+// Intercept callback for YYC hooks that need to override the return value.
+// Called before the trampoline. If it returns true, the trampoline is skipped
+// and `result` (the RValue& the GML runtime reads back) holds EFL's answer.
+// If it returns false, the trampoline runs normally.
+using InterceptCallback = std::function<bool(
+    YYTK::RValue& result, int argc, YYTK::RValue** args)>;
+
 class HookRegistry {
 public:
     HookRegistry(Aurie::AurieModule* module, YYTK::YYTKInterface* yytk);
@@ -71,6 +78,12 @@ public:
 
     // Register an inline function detour via MmCreateHook.
     bool registerDetour(const std::string& name, void* source, void* dest, void** trampoline);
+
+    // Register a YYC hook that can intercept and override the script's return value.
+    // The callback receives (result, argc, args): set result and return true to
+    // short-circuit; return false to fall through to the original function.
+    bool registerInterceptHook(const std::string& name, const std::string& target,
+                               InterceptCallback callback);
 
     void removeHook(const std::string& name);
     void removeAll();

@@ -22,6 +22,8 @@ std::optional<AreaDef> AreaDef::fromJson(const nlohmann::json& j) {
     if (j.contains("unlockTrigger")) def.unlockTrigger = j.at("unlockTrigger").get<std::string>();
     if (j.contains("entryEvent"))    def.entryEvent    = j.at("entryEvent").get<std::string>();
     if (j.contains("exitEvent"))     def.exitEvent     = j.at("exitEvent").get<std::string>();
+    if (j.contains("roomWidth"))     def.roomWidth     = j.at("roomWidth").get<int>();
+    if (j.contains("roomHeight"))    def.roomHeight    = j.at("roomHeight").get<int>();
 
     return def;
 }

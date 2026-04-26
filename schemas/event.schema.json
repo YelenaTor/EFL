@@ -1,22 +1,60 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://efl.dev/schemas/event.schema.json",
-  "title": "EFL Event Definition",
-  "description": "Schema for content-defined story events and cutscenes",
+  "title": "EFL Cutscene Definition",
+  "description": "Schema for EFL cutscene eligibility and side-effect declarations. Cutscene content (dialogue, scene steps) lives in MOMI's __mist__.json. EFL owns the eligibility gate (trigger evaluation) and the side effects that fire when FoM confirms the cutscene played.",
   "type": "object",
   "required": ["id"],
   "properties": {
-    "id": { "type": "string" },
-    "mode": { "type": "string", "enum": ["nativeBridge", "customOverlay"] },
-    "trigger": { "type": "string" },
-    "commands": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "type": { "type": "string" }
+    "id": {
+      "type": "string",
+      "description": "Unique cutscene identifier. Must match the key used in FoM's cutscene registry (loaded by gml_Script_load_cutscenes)."
+    },
+    "trigger": {
+      "type": "string",
+      "description": "EFL trigger ID that must evaluate true for this cutscene to be eligible. Empty string or omitted = unconditional (always eligible unless blocked by 'once')."
+    },
+    "once": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true, EFL blocks re-evaluation after the cutscene is first marked eligible. Mirrors FoM's own once semantics."
+    },
+    "onFire": {
+      "type": "object",
+      "description": "Side effects applied by EFL when the cutscene fires (either via check_cutscene_eligible interception or via an area entry/exit trigger path).",
+      "properties": {
+        "setFlags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "EFL flag names to set to true when this cutscene fires."
+        },
+        "clearFlags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "EFL flag names to clear (set false) when this cutscene fires."
+        },
+        "startQuest": {
+          "type": "string",
+          "description": "EFL quest ID to start when this cutscene fires. The quest must be registered in the same pack."
+        },
+        "advanceQuest": {
+          "type": "string",
+          "description": "EFL quest ID to advance by one stage when this cutscene fires."
+        },
+        "grantItemId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Numeric item ID to grant the player when this cutscene fires. ID is the index into t2_input.json's items array (e.g. look up your item name in that list to find its index)."
+        },
+        "grantItemQty": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Quantity to grant. Defaults to 1."
         }
-      }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }

@@ -1,0 +1,10 @@
+{
+    "id": "fluffkin_hollow",
+    "displayName": "Fluffkin Hollow",
+    "backend": "native",
+    "hostRoom": "rm_forest_trigger",
+    "roomWidth": 1280,
+    "roomHeight": 720,
+    "music": "mus_hollow_ambient",
+    "entryAnchor": "512,360"
+}

@@ -1,16 +1,8 @@
 {
     "id": "example_room_welcome",
-    "mode": "nativeBridge",
     "trigger": "",
-    "commands": [
-        {
-            "type": "dialogue",
-            "npc": "auri_clone",
-            "line": "Huh? How did you get in here? ...Oh well. Welcome, I guess!"
-        },
-        {
-            "type": "setFlag",
-            "flag": "example_room_visited"
-        }
-    ]
+    "once": true,
+    "onFire": {
+        "setFlags": ["example_room_visited"]
+    }
 }
